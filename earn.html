@@ -5,6 +5,38 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>EarnPro – Earn</title>
 <link rel="stylesheet" href="assets/css/style.css">
+<style>
+.ad-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+.ad-circle {
+  width: 130px; height: 130px; border-radius: 50%;
+  background: conic-gradient(var(--pl) 0%, var(--br) 0%);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px; position: relative;
+  box-shadow: 0 0 40px var(--pglow);
+  transition: background .1s;
+}
+.ad-circle-inner {
+  width: 100px; height: 100px; border-radius: 50%;
+  background: var(--bg); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+}
+.ad-sec { font-size: 34px; font-weight: 900; color: var(--pu); }
+.ad-lbl { font-size: 11px; color: var(--t3); }
+.ad-title { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px; text-align: center; }
+.ad-sub { font-size: 13px; color: var(--t2); text-align: center; margin-bottom: 20px; line-height: 1.5; }
+.ad-progress { width: 100%; height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+.ad-progress-fill { height: 100%; background: linear-gradient(90deg, var(--p), var(--pl)); border-radius: 3px; transition: width .9s linear; }
+.ad-warning { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); border-radius: 12px; padding: 10px 14px; font-size: 12px; color: var(--red); text-align: center; margin-bottom: 14px; }
+.ad-reward-badge { background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.25); border-radius: 20px; padding: 6px 16px; font-size: 14px; font-weight: 700; color: var(--green); margin-bottom: 20px; }
+.ad-open-btn { background: linear-gradient(135deg,var(--p),var(--pl)); color:#fff; border:none; border-radius: var(--r2); padding: 13px 28px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: 'Outfit',sans-serif; margin-bottom: 10px; width: 100%; }
+.ad-skip-msg { font-size: 11px; color: var(--t3); text-align: center; }
+</style>
 </head>
 <body>
 
@@ -17,12 +49,12 @@
 
 <div class="pg fade-in" style="padding-top:14px">
 
-  <!-- HERO BANNER -->
+  <!-- HERO -->
   <div style="background:linear-gradient(135deg,rgba(124,58,237,.28),rgba(168,85,247,.12));border:1px solid var(--brh);border-radius:var(--r3);padding:18px;margin-bottom:16px;display:flex;align-items:center;gap:14px">
     <div style="font-size:38px">🚀</div>
     <div>
       <div style="font-size:16px;font-weight:800;margin-bottom:3px">Earn Real Money!</div>
-      <div style="font-size:12px;color:var(--t2)">Watch ads · Complete tasks · Refer friends</div>
+      <div style="font-size:12px;color:var(--t2)">Watch ads 15 sec · Complete tasks · Refer friends</div>
     </div>
   </div>
 
@@ -31,7 +63,7 @@
   <div class="task-card">
     <div class="t-ico purple">📺</div>
     <div class="t-info">
-      <div class="t-name">Watch Video Ad</div>
+      <div class="t-name">Watch Video Ad (15 sec)</div>
       <div class="t-reward">+৳<span id="adRwdLbl">1</span> per ad</div>
       <div class="t-cd" id="adStatus">Ready to watch!</div>
     </div>
@@ -69,24 +101,34 @@
       <input type="text" id="refLink" readonly>
       <button class="copy-btn" id="copyRefBtn">📋</button>
     </div>
-    <div style="margin-top:10px;font-size:11px;color:var(--t3);text-align:center">Share this link to earn referral bonuses</div>
   </div>
-
 </div>
 
-<!-- AD WATCHING MODAL -->
-<div class="modal-ov" id="adModal">
-  <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title" style="text-align:center">📺 Watching Ad...</div>
-    <div style="text-align:center;padding:20px 0">
-      <div class="ad-timer-circle" id="adTimerNum">30</div>
-      <div style="font-size:13px;color:var(--t2);margin-bottom:16px">seconds remaining</div>
-      <div class="progress"><div class="progress-fill" id="adProg" style="width:0%"></div></div>
-      <div style="font-size:12px;color:var(--t3);margin-top:12px">Please wait for the ad to finish</div>
+<!-- ══════════════ AD OVERLAY ══════════════ -->
+<div id="adOverlay" class="ad-overlay" style="display:none">
+  <div style="font-size:42px;margin-bottom:14px">📺</div>
+  <div class="ad-title">Watching Ad...</div>
+  <div class="ad-reward-badge">+৳<span id="ovReward">1</span> reward after 15 seconds</div>
+
+  <div class="ad-circle" id="adCircle">
+    <div class="ad-circle-inner">
+      <div class="ad-sec" id="adCountNum">15</div>
+      <div class="ad-lbl">seconds</div>
     </div>
-    <button class="btn btn-ghost btn-full" id="cancelAdBtn" style="margin-top:8px">✕ Cancel</button>
   </div>
+
+  <div class="ad-progress" style="width:100%;max-width:320px">
+    <div class="ad-progress-fill" id="adProgFill" style="width:0%"></div>
+  </div>
+
+  <div class="ad-sub">Please keep this page open.<br>Do not go back — reward will be lost.</div>
+
+  <div class="ad-warning">
+    ⚠️ Closing or going back = NO reward
+  </div>
+
+  <button class="ad-open-btn" id="openAdBtn">🔗 Open Ad (required)</button>
+  <div class="ad-skip-msg" id="adSkipMsg">Waiting for 15 seconds...</div>
 </div>
 
 <!-- TASK DETAIL MODAL -->
@@ -98,9 +140,9 @@
       <div id="tmName" style="font-size:18px;font-weight:800;margin-bottom:4px"></div>
       <div id="tmReward" style="font-size:14px;color:var(--green);font-weight:700;margin-bottom:8px"></div>
       <div id="tmDesc" style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.5"></div>
-      <a id="tmLink" href="#" target="_blank" rel="noopener" class="btn btn-p btn-full" style="margin-bottom:10px">🔗 Open Task</a>
-      <button id="tmClaim" class="btn btn-green btn-full">✅ Claim Reward</button>
-      <button class="btn btn-ghost btn-full" onclick="document.getElementById('taskModal').classList.remove('open')" style="margin-top:8px">Close</button>
+      <div class="ad-warning" style="margin-bottom:14px">⚠️ You must watch a 15-sec ad to claim this reward</div>
+      <button id="tmStart" class="btn btn-p btn-full" style="margin-bottom:10px">▶ Watch Ad & Claim</button>
+      <button class="btn btn-ghost btn-full" onclick="document.getElementById('taskModal').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -127,22 +169,47 @@
 import { auth, db } from './assets/firebase/firebase.js';
 import { doc, getDoc, getDocs, updateDoc, arrayUnion, increment, collection, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { toast, copyText, refCode, openModal, closeModal, getSettings } from './assets/js/app.js';
+import { toast, copyText, refCode, openModal, getSettings } from './assets/js/app.js';
 
-let uid, userData, cfg, adInterval, currentTaskId = null, currentTaskReward = 0;
+const AD_DURATION = 15;
+let uid, userData, cfg;
+let adTimer = null;
+let adCompleted = false;
+let currentTaskId = null;
+let currentTaskReward = 0;
+let pendingType = null; // 'ad' or 'task'
+
+// Ad URLs — Admin sets these in Settings
+// Rotates through all 3 networks: Adsterra, Monetag, Smartlink
+const AD_NETWORKS = {
+  adsterra:  '',
+  monetag:   '',
+  smartlink: ''
+};
+
+function getAdUrl(cfg) {
+  const urls = [
+    cfg.adsterraUrl,
+    cfg.monetagUrl,
+    cfg.smartlinkUrl
+  ].filter(Boolean);
+  if (!urls.length) return null;
+  return urls[Math.floor(Math.random() * urls.length)];
+}
 
 onAuthStateChanged(auth, async user => {
   if (!user) { location.href = 'login.html'; return; }
   uid = user.uid;
-  const [usnap, settings] = await Promise.all([getDoc(doc(db, 'users', uid)), getSettings(db)]);
+  const [usnap, settings] = await Promise.all([getDoc(doc(db,'users',uid)), getSettings(db)]);
   userData = usnap.data();
   cfg = settings;
   if (!userData || userData.isBanned) { location.href = 'login.html'; return; }
 
-  document.getElementById('tbBal').textContent = parseFloat(userData.balance || 0).toFixed(2);
-  document.getElementById('adRwdLbl').textContent = cfg.adReward || 1;
-  document.getElementById('dailyLbl').textContent = cfg.dailyBonus || 2;
-  document.getElementById('refBonusLbl').textContent = cfg.referralBonus || 5;
+  document.getElementById('tbBal').textContent = parseFloat(userData.balance||0).toFixed(2);
+  document.getElementById('adRwdLbl').textContent = cfg.adReward||1;
+  document.getElementById('dailyLbl').textContent = cfg.dailyBonus||2;
+  document.getElementById('refBonusLbl').textContent = cfg.referralBonus||5;
+  document.getElementById('ovReward').textContent = cfg.adReward||1;
 
   const rl = document.getElementById('refLink');
   rl.value = location.origin + '/register.html?ref=' + (userData.referralCode || refCode(uid));
@@ -153,27 +220,34 @@ onAuthStateChanged(auth, async user => {
   loadTasks();
 });
 
+// ── AD COOLDOWN ─────────────────────────────────────
 function checkAdCooldown() {
-  const lastAdKey = `ep_ad_${uid}`;
-  const last = parseInt(localStorage.getItem(lastAdKey) || '0');
-  const cd = (cfg.adCooldown || 30) * 1000;
+  const lastKey = `ep_ad_${uid}`;
+  const last = parseInt(localStorage.getItem(lastKey)||'0');
+  const cd = (cfg.adCooldown||30) * 1000;
   const elapsed = Date.now() - last;
+  const btn = document.getElementById('adBtn');
   if (elapsed < cd) {
-    const rem = Math.ceil((cd - elapsed) / 1000);
-    document.getElementById('adBtn').disabled = true;
-    document.getElementById('adStatus').textContent = `Cooldown: ${rem}s`;
-    const t = setInterval(() => {
-      const e2 = Date.now() - parseInt(localStorage.getItem(lastAdKey) || '0');
-      if (e2 >= cd) { clearInterval(t); document.getElementById('adBtn').disabled = false; document.getElementById('adStatus').textContent = 'Ready to watch!'; }
-      else { document.getElementById('adStatus').textContent = `Cooldown: ${Math.ceil((cd - e2) / 1000)}s`; }
+    btn.disabled = true;
+    const tick = setInterval(() => {
+      const e2 = Date.now() - parseInt(localStorage.getItem(lastKey)||'0');
+      if (e2 >= cd) {
+        clearInterval(tick);
+        btn.disabled = false;
+        document.getElementById('adStatus').textContent = 'Ready to watch!';
+      } else {
+        document.getElementById('adStatus').textContent = `Cooldown: ${Math.ceil((cd-e2)/1000)}s`;
+      }
     }, 1000);
+    document.getElementById('adStatus').textContent = `Cooldown: ${Math.ceil((cd-elapsed)/1000)}s`;
   }
 }
 
+// ── DAILY BONUS ─────────────────────────────────────
 function checkDailyBonus() {
   const today = new Date().toDateString();
   const lc = userData.dailyBonusClaimed;
-  const done = lc && (lc.toDate ? lc.toDate().toDateString() : new Date(lc).toDateString()) === today;
+  const done = lc && (lc.toDate?lc.toDate().toDateString():new Date(lc).toDateString()) === today;
   if (done) {
     document.getElementById('dailyBtn').textContent = '✅ Claimed';
     document.getElementById('dailyBtn').disabled = true;
@@ -181,112 +255,174 @@ function checkDailyBonus() {
   }
 }
 
-document.getElementById('adBtn').addEventListener('click', () => {
-  openModal('adModal');
-  let t = cfg.adCooldown || 30;
-  const total = t;
-  document.getElementById('adTimerNum').textContent = t;
-  document.getElementById('adProg').style.width = '0%';
-  adInterval = setInterval(async () => {
-    t--;
-    document.getElementById('adTimerNum').textContent = t;
-    document.getElementById('adProg').style.width = ((total - t) / total * 100) + '%';
-    if (t <= 0) {
-      clearInterval(adInterval);
-      closeModal('adModal');
-      const reward = cfg.adReward || 1;
-      await updateDoc(doc(db, 'users', uid), {
-        balance: increment(reward), totalEarned: increment(reward), adsWatched: increment(1)
-      });
-      localStorage.setItem(`ep_ad_${uid}`, Date.now().toString());
-      userData.balance = (userData.balance || 0) + reward;
-      document.getElementById('tbBal').textContent = parseFloat(userData.balance).toFixed(2);
-      toast(`+৳${reward} Ad reward earned! 📺`, 'ok');
-      document.getElementById('adBtn').disabled = true;
-      document.getElementById('adStatus').textContent = `Cooldown started...`;
-      checkAdCooldown();
-    }
-  }, 1000);
-});
-
-document.getElementById('cancelAdBtn').addEventListener('click', () => {
-  clearInterval(adInterval);
-  closeModal('adModal');
-  toast('Ad cancelled – no reward', 'warn');
-});
-
 document.getElementById('dailyBtn').addEventListener('click', async () => {
   const today = new Date().toDateString();
-  const fresh = (await getDoc(doc(db, 'users', uid))).data();
+  const fresh = (await getDoc(doc(db,'users',uid))).data();
   const lc = fresh.dailyBonusClaimed;
-  const done = lc && (lc.toDate ? lc.toDate().toDateString() : new Date(lc).toDateString()) === today;
-  if (done) { toast('Already claimed today!', 'warn'); return; }
-  const bonus = cfg.dailyBonus || 2;
-  await updateDoc(doc(db, 'users', uid), {
+  const done = lc && (lc.toDate?lc.toDate().toDateString():new Date(lc).toDateString()) === today;
+  if (done) { toast('Already claimed today!','warn'); return; }
+  const bonus = cfg.dailyBonus||2;
+  await updateDoc(doc(db,'users',uid),{
     balance: increment(bonus), totalEarned: increment(bonus), dailyBonusClaimed: serverTimestamp()
   });
   document.getElementById('dailyBtn').textContent = '✅ Claimed';
   document.getElementById('dailyBtn').disabled = true;
   document.getElementById('dailyStatus').textContent = 'Come back tomorrow!';
-  userData.balance = (userData.balance || 0) + bonus;
+  userData.balance = (userData.balance||0) + bonus;
   document.getElementById('tbBal').textContent = parseFloat(userData.balance).toFixed(2);
   toast(`+৳${bonus} Daily bonus! 🎁`, 'ok');
 });
 
+// ── START AD ─────────────────────────────────────────
+function startAdOverlay(type, taskId, taskReward) {
+  pendingType = type;
+  currentTaskId = taskId || null;
+  currentTaskReward = taskReward || (cfg.adReward||1);
+
+  document.getElementById('ovReward').textContent = currentTaskReward;
+  document.getElementById('adOverlay').style.display = 'flex';
+  document.getElementById('adProgFill').style.width = '0%';
+  document.getElementById('adCountNum').textContent = AD_DURATION;
+  document.getElementById('adSkipMsg').textContent = `Waiting for ${AD_DURATION} seconds...`;
+  document.getElementById('openAdBtn').style.display = 'block';
+  adCompleted = false;
+
+  // Open ad immediately
+  const adUrl = getAdUrl(cfg);
+  if (adUrl) {
+    window.open(adUrl, '_blank');
+  }
+
+  let remaining = AD_DURATION;
+  const total = AD_DURATION;
+
+  adTimer = setInterval(async () => {
+    remaining--;
+    const pct = ((total - remaining) / total) * 100;
+    document.getElementById('adProgFill').style.width = pct + '%';
+    document.getElementById('adCountNum').textContent = remaining;
+
+    // Update conic gradient circle
+    document.getElementById('adCircle').style.background =
+      `conic-gradient(var(--pl) ${pct}%, var(--br) ${pct}%)`;
+
+    if (remaining <= 0) {
+      clearInterval(adTimer);
+      adCompleted = true;
+      document.getElementById('adSkipMsg').textContent = '✅ Time complete! Claiming reward...';
+      document.getElementById('openAdBtn').style.display = 'none';
+      await claimReward();
+    } else {
+      document.getElementById('adSkipMsg').textContent = `⏳ Please wait ${remaining} more seconds...`;
+    }
+  }, 1000);
+}
+
+async function claimReward() {
+  const reward = currentTaskReward;
+
+  if (pendingType === 'ad') {
+    await updateDoc(doc(db,'users',uid),{
+      balance: increment(reward),
+      totalEarned: increment(reward),
+      adsWatched: increment(1)
+    });
+    localStorage.setItem(`ep_ad_${uid}`, Date.now().toString());
+    userData.balance = (userData.balance||0) + reward;
+    document.getElementById('tbBal').textContent = parseFloat(userData.balance).toFixed(2);
+    document.getElementById('adBtn').disabled = true;
+    document.getElementById('adStatus').textContent = 'Cooldown started...';
+    checkAdCooldown();
+    toast(`+৳${reward} Ad reward earned! 📺`, 'ok');
+
+  } else if (pendingType === 'task' && currentTaskId) {
+    const fresh = (await getDoc(doc(db,'users',uid))).data();
+    if ((fresh.claimedTasks||[]).includes(currentTaskId)) {
+      toast('Task already claimed!','warn');
+    } else {
+      await updateDoc(doc(db,'users',uid),{
+        balance: increment(reward),
+        totalEarned: increment(reward),
+        claimedTasks: arrayUnion(currentTaskId)
+      });
+      userData.balance = (userData.balance||0) + reward;
+      userData.claimedTasks = [...(userData.claimedTasks||[]), currentTaskId];
+      document.getElementById('tbBal').textContent = parseFloat(userData.balance).toFixed(2);
+      toast(`+৳${reward} Task reward! ✅`, 'ok');
+      loadTasks();
+    }
+  }
+
+  // Close overlay after short delay
+  setTimeout(() => {
+    document.getElementById('adOverlay').style.display = 'none';
+    document.getElementById('taskModal').classList.remove('open');
+    adCompleted = false;
+    pendingType = null;
+  }, 1500);
+}
+
+// Watch Ad button
+document.getElementById('adBtn').addEventListener('click', () => {
+  startAdOverlay('ad', null, cfg.adReward||1);
+});
+
+// Re-open ad button (inside overlay)
+document.getElementById('openAdBtn').addEventListener('click', () => {
+  const adUrl = getAdUrl(cfg);
+  if (adUrl) window.open(adUrl, '_blank');
+  else toast('Ad URL not set by admin yet', 'warn');
+});
+
+// Prevent back = no reward (warn user)
+window.addEventListener('popstate', () => {
+  if (document.getElementById('adOverlay').style.display !== 'none' && !adCompleted) {
+    clearInterval(adTimer);
+    document.getElementById('adOverlay').style.display = 'none';
+    toast('❌ Ad cancelled — no reward', 'err');
+  }
+});
+
+// ── LOAD TASKS ────────────────────────────────────────
 async function loadTasks() {
-  const snap = await getDocs(collection(db, 'tasks'));
+  const snap = await getDocs(collection(db,'tasks'));
   const list = document.getElementById('taskList');
   if (snap.empty) { list.innerHTML = '<div class="empty"><div class="ei">📋</div><p>No tasks available yet</p></div>'; return; }
   list.innerHTML = '';
-  const claimed = userData.claimedTasks || [];
-  const colMap = { social: 'blue', video: 'purple', telegram: 'blue', link: 'green', survey: 'gold', other: 'purple' };
+  const claimed = userData.claimedTasks||[];
+  const colMap = { social:'blue', video:'purple', telegram:'blue', link:'green', survey:'gold', other:'purple' };
   snap.forEach(d => {
     const t = d.data(); const tid = d.id;
     const done = claimed.includes(tid);
-    const col = colMap[t.type] || 'purple';
+    const col = colMap[t.type]||'purple';
     list.innerHTML += `<div class="task-card">
-      <div class="t-ico ${col}">${t.icon || '✅'}</div>
+      <div class="t-ico ${col}">${t.icon||'✅'}</div>
       <div class="t-info">
         <div class="t-name">${t.name}</div>
         <div class="t-reward">+৳${t.reward}</div>
-        <div class="t-cd">${t.description || ''}</div>
+        <div class="t-cd">${t.description||''}</div>
       </div>
-      <button class="btn btn-${done ? 'ghost' : 'p'} btn-sm" ${done ? 'disabled' : ''}
-        onclick="${done ? '' : `window._openTask('${tid}','${(t.name||'').replace(/'/g,"\\'")}','${t.reward}','${t.icon||'✅'}','${(t.description||'').replace(/'/g,"\\'")}','${t.link||''}')`}">
-        ${done ? '✅ Done' : 'Start'}
+      <button class="btn btn-${done?'ghost':'p'} btn-sm" ${done?'disabled':''}
+        onclick="${done?'':` window._openTask('${tid}','${(t.name||'').replace(/'/g,"\\'")}','${t.reward}','${t.icon||'✅'}','${(t.description||'').replace(/'/g,"\\'")}','${t.link||''}') `}">
+        ${done?'✅ Done':'Start'}
       </button>
     </div>`;
   });
 }
 
 window._openTask = (id, name, reward, icon, desc, link) => {
-  currentTaskId = id; currentTaskReward = parseFloat(reward);
+  currentTaskId = id;
+  currentTaskReward = parseFloat(reward);
   document.getElementById('tmIco').textContent = icon;
   document.getElementById('tmName').textContent = name;
   document.getElementById('tmReward').textContent = `+৳${reward} reward`;
   document.getElementById('tmDesc').textContent = desc;
-  if (link) { document.getElementById('tmLink').href = link; document.getElementById('tmLink').style.display = ''; }
-  else { document.getElementById('tmLink').style.display = 'none'; }
   openModal('taskModal');
 };
 
-document.getElementById('tmClaim').addEventListener('click', async () => {
-  if (!currentTaskId) return;
-  const fresh = (await getDoc(doc(db, 'users', uid))).data();
-  if ((fresh.claimedTasks || []).includes(currentTaskId)) {
-    toast('Task already claimed!', 'warn'); closeModal('taskModal'); return;
-  }
-  await updateDoc(doc(db, 'users', uid), {
-    balance: increment(currentTaskReward),
-    totalEarned: increment(currentTaskReward),
-    claimedTasks: arrayUnion(currentTaskId)
-  });
-  userData.balance = (userData.balance || 0) + currentTaskReward;
-  userData.claimedTasks = [...(userData.claimedTasks || []), currentTaskId];
-  document.getElementById('tbBal').textContent = parseFloat(userData.balance).toFixed(2);
-  toast(`+৳${currentTaskReward} Task reward! ✅`, 'ok');
-  closeModal('taskModal');
-  loadTasks();
+document.getElementById('tmStart').addEventListener('click', () => {
+  document.getElementById('taskModal').classList.remove('open');
+  startAdOverlay('task', currentTaskId, currentTaskReward);
 });
 </script>
 </body>
