@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>EarnPro – Wallet</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div style="font-size:18px;font-weight:800">🏦 Wallet</div>
+    <div class="tb-bal">💰 <span id="tbBal">0.00</span> <small>BDT</small></div>
+  </div>
+</div>
+
+<div class="pg fade-in" style="padding-top:14px">
+
+  <!-- BALANCE CARD -->
+  <div class="bal-card" style="margin-bottom:16px">
+    <div class="bal-lbl">Available Balance</div>
+    <div class="bal-amt"><span>৳</span><span id="balShow">0.00</span></div>
+    <div class="bal-sub">Minimum withdrawal: ৳<span id="minWdShow">50</span></div>
+  </div>
+
+  <!-- WITHDRAW FORM -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="stitle" style="margin-bottom:16px">💸 Request Withdrawal</div>
+    <div class="igroup">
+      <label>Payment Method</label>
+      <select class="ifield" id="wdMethod">
+        <option value="">— Select Method —</option>
+        <option value="bkash">📱 bKash</option>
+        <option value="nagad">💚 Nagad</option>
+        <option value="rocket">🚀 Rocket</option>
+      </select>
+    </div>
+    <div class="igroup">
+      <label>Account Number</label>
+      <input type="tel" id="wdAcc" class="ifield" placeholder="01XXXXXXXXX" maxlength="15">
+    </div>
+    <div class="igroup">
+      <label>Withdrawal Amount (BDT)</label>
+      <input type="number" id="wdAmt" class="ifield" placeholder="Enter amount" min="1">
+    </div>
+    <button class="btn btn-p btn-full" id="wdBtn" style="padding:14px;font-size:15px;margin-top:4px">
+      💸 Submit Request
+    </button>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="stitle">📜 Withdrawal History</div>
+  <div id="histList"></div>
+
+</div>
+
+<nav class="bnav">
+  <a href="home.html" class="bn-item" data-p="home">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Home
+  </a>
+  <a href="earn.html" class="bn-item" data-p="earn">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>Earn
+  </a>
+  <a href="earn.html" class="bn-center">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+  </a>
+  <a href="wallet.html" class="bn-item active" data-p="wallet">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 18v1a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1h-9a2 2 0 00-2 2v8a2 2 0 002 2h9zm-9-2h10V8H12v8zm4-2.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"/></svg>Wallet
+  </a>
+  <a href="profile.html" class="bn-item" data-p="profile">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>Profile
+  </a>
+</nav>
+
+<script type="module">
+import { auth, db } from './assets/firebase/firebase.js';
+import { doc, getDoc, getDocs, addDoc, collection, query, where, orderBy, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { toast, showLoader, hideLoader, ago, getSettings } from './assets/js/app.js';
+
+let uid, balance = 0, minWd = 50;
+
+onAuthStateChanged(auth, async user => {
+  if (!user) { location.href = 'login.html'; return; }
+  uid = user.uid;
+
+  const [usnap, cfg] = await Promise.all([getDoc(doc(db, 'users', uid)), getSettings(db)]);
+  const u = usnap.data();
+  if (!u || u.isBanned) { location.href = 'login.html'; return; }
+
+  balance = parseFloat(u.balance || 0);
+  minWd = cfg.minWithdraw || 50;
+  document.getElementById('tbBal').textContent = balance.toFixed(2);
+  document.getElementById('balShow').textContent = balance.toFixed(2);
+  document.getElementById('minWdShow').textContent = minWd;
+
+  loadHistory();
+});
+
+document.getElementById('wdBtn').addEventListener('click', async () => {
+  const method = document.getElementById('wdMethod').value;
+  const acc = document.getElementById('wdAcc').value.trim();
+  const amt = parseFloat(document.getElementById('wdAmt').value);
+
+  if (!method) { toast('Please select a payment method', 'warn'); return; }
+  if (!acc || acc.length < 11) { toast('Enter a valid 11-digit account number', 'err'); return; }
+  if (!amt || isNaN(amt)) { toast('Enter a valid amount', 'err'); return; }
+  if (amt < minWd) { toast(`Minimum withdrawal is ৳${minWd}`, 'err'); return; }
+
+  const fresh = (await getDoc(doc(db, 'users', uid))).data();
+  if (amt > parseFloat(fresh.balance || 0)) { toast('Insufficient balance', 'err'); return; }
+
+  showLoader('Submitting request...');
+  try {
+    await addDoc(collection(db, 'withdraws'), {
+      uid, username: fresh.username || '',
+      method, account: acc, amount: amt,
+      status: 'pending', createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, 'users', uid), { balance: increment(-amt) });
+    balance -= amt;
+    document.getElementById('tbBal').textContent = balance.toFixed(2);
+    document.getElementById('balShow').textContent = balance.toFixed(2);
+    document.getElementById('wdMethod').value = '';
+    document.getElementById('wdAcc').value = '';
+    document.getElementById('wdAmt').value = '';
+    hideLoader();
+    toast('Withdrawal request submitted! ✅', 'ok');
+    loadHistory();
+  } catch {
+    hideLoader();
+    toast('Failed to submit. Try again.', 'err');
+  }
+});
+
+async function loadHistory() {
+  const snap = await getDocs(query(collection(db, 'withdraws'), where('uid', '==', uid), orderBy('createdAt', 'desc')));
+  const el = document.getElementById('histList');
+  if (snap.empty) { el.innerHTML = '<div class="empty"><div class="ei">📜</div><p>No withdrawals yet</p></div>'; return; }
+  const icons = { bkash: '📱', nagad: '💚', rocket: '🚀' };
+  const smap = { pending: 's-p', approved: 's-a', rejected: 's-r' };
+  el.innerHTML = '';
+  snap.forEach(d => {
+    const w = d.data();
+    el.innerHTML += `<div class="wtx">
+      <div class="wtx-l">
+        <div class="wtx-ico">${icons[w.method] || '💸'}</div>
+        <div>
+          <div class="wtx-method">${(w.method || '').charAt(0).toUpperCase() + (w.method || '').slice(1)}</div>
+          <div class="wtx-date">${w.account} · ${ago(w.createdAt)}</div>
+        </div>
+      </div>
+      <div class="wtx-r">
+        <div class="wtx-amt" style="color:${w.status==='approved'?'var(--green)':w.status==='rejected'?'var(--red)':'var(--t1)'}">৳${parseFloat(w.amount).toFixed(2)}</div>
+        <div class="schip ${smap[w.status] || 's-p'}">${(w.status || 'pending').toUpperCase()}</div>
+      </div>
+    </div>`;
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>EarnPro</title>
+<link rel="stylesheet" href="assets/css/style.css">
+<style>body{padding:0}</style>
+</head>
+<body>
+<div class="splash">
+  <div class="splash-logo">💎</div>
+  <div class="splash-name">EarnPro</div>
+  <div class="splash-tagline">Earn · Grow · Withdraw</div>
+  <div class="splash-spin"></div>
+</div>
+<script type="module">
+import { auth } from './assets/firebase/firebase.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+onAuthStateChanged(auth, u => {
+  setTimeout(() => { location.href = u ? 'home.html' : 'login.html'; }, 1500);
+});
+</script>
+</body>
+</html>

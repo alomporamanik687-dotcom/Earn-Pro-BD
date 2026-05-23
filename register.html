@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>EarnPro – Register</title>
+<link rel="stylesheet" href="assets/css/style.css">
+<style>body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}</style>
+</head>
+<body>
+<div class="auth-pg fade-in" style="width:100%">
+  <div class="auth-logo">
+    <div class="al">💎</div>
+    <h1>EarnPro</h1>
+    <p>Start earning from day one</p>
+  </div>
+  <div class="auth-card">
+    <h2>Create Account ✨</h2>
+    <p class="sub">Join thousands of active earners</p>
+
+    <div class="igroup ifield-ico">
+      <label>Username</label>
+      <span class="ico">👤</span>
+      <input type="text" id="un" class="ifield" placeholder="cooluser123" autocomplete="username">
+    </div>
+    <div class="igroup ifield-ico">
+      <label>Email Address</label>
+      <span class="ico">✉️</span>
+      <input type="email" id="em" class="ifield" placeholder="you@email.com" autocomplete="email">
+    </div>
+    <div class="igroup">
+      <label>Password</label>
+      <input type="password" id="pw" class="ifield" placeholder="Minimum 6 characters" autocomplete="new-password">
+    </div>
+    <div class="igroup ifield-ico">
+      <label>Referral Code <span style="color:var(--t3);text-transform:none;font-weight:400">(optional)</span></label>
+      <span class="ico">🔗</span>
+      <input type="text" id="ref" class="ifield" placeholder="EPXXXXXX" style="text-transform:uppercase">
+    </div>
+    <button class="btn btn-p btn-full btn-lg" id="regBtn">✨ Create Account</button>
+    <div class="divider"></div>
+    <p class="auth-foot" style="margin:0">Already have account? <a href="login.html">Login</a></p>
+  </div>
+</div>
+
+<script type="module">
+import { auth, db } from './assets/firebase/firebase.js';
+import { createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { doc, setDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
+
+onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
+
+const urlRef = new URLSearchParams(location.search).get('ref');
+if (urlRef) { document.getElementById('ref').value = urlRef.toUpperCase(); }
+
+document.getElementById('ref').addEventListener('input', function() {
+  this.value = this.value.toUpperCase();
+});
+
+document.getElementById('regBtn').addEventListener('click', async () => {
+  const un = document.getElementById('un').value.trim();
+  const em = document.getElementById('em').value.trim();
+  const pw = document.getElementById('pw').value;
+  const rf = document.getElementById('ref').value.trim().toUpperCase();
+
+  if (!un || !em || !pw) { toast('Please fill all required fields', 'err'); return; }
+  if (un.length < 3) { toast('Username must be at least 3 characters', 'err'); return; }
+  if (!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, underscore only', 'err'); return; }
+  if (pw.length < 6) { toast('Password must be at least 6 characters', 'err'); return; }
+
+  showLoader('Creating your account...');
+  try {
+    let referrerId = null;
+
+    if (rf) {
+      const q = query(collection(db, 'users'), where('referralCode', '==', rf));
+      const snap = await getDocs(q);
+      if (snap.empty) { hideLoader(); toast('Invalid referral code', 'err'); return; }
+      referrerId = snap.docs[0].id;
+    }
+
+    const cred = await createUserWithEmailAndPassword(auth, em, pw);
+    const uid = cred.user.uid;
+    const code = refCode(uid);
+
+    await setDoc(doc(db, 'users', uid), {
+      uid, username: un, email: em,
+      balance: 0, totalEarned: 0,
+      adsWatched: 0, referralCount: 0,
+      referralCode: code, referredBy: referrerId || null,
+      membership: 'free', role: 'user',
+      isActive: true, isBanned: false,
+      claimedTasks: [],
+      dailyBonusClaimed: null,
+      createdAt: serverTimestamp(),
+      lastSeen: serverTimestamp()
+    });
+
+    if (referrerId) {
+      const setSnap = await getDocs(collection(db, 'settings'));
+      const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
+      await updateDoc(doc(db, 'users', referrerId), {
+        balance: increment(bonus),
+        totalEarned: increment(bonus),
+        referralCount: increment(1)
+      });
+      await setDoc(doc(db, 'referrals', uid), {
+        referrerId, newUserId: uid, bonus,
+        newUsername: un, createdAt: serverTimestamp()
+      });
+    }
+
+    toast('Account created! Welcome 🎉', 'ok');
+    setTimeout(() => location.href = 'home.html', 500);
+  } catch (e) {
+    hideLoader();
+    const m = {
+      'auth/email-already-in-use': 'Email is already registered',
+      'auth/invalid-email': 'Invalid email address',
+      'auth/weak-password': 'Password is too weak'
+    };
+    toast(m[e.code] || 'Registration failed. Try again.', 'err');
+  }
+});
+</script>
+</body>
+</html>
