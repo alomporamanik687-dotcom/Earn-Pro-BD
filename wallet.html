@@ -5,6 +5,30 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>EarnPro – Wallet</title>
 <link rel="stylesheet" href="assets/css/style.css">
+<style>
+.wd-summary-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px}
+.wd-sum-box{background:var(--card);border:1px solid var(--br);border-radius:var(--r2);padding:12px;text-align:center}
+.wd-sum-val{font-size:17px;font-weight:800;margin-bottom:3px}
+.wd-sum-lbl{font-size:10px;color:var(--t3);font-weight:500}
+.empty-wd{text-align:center;padding:32px 16px;background:var(--card);border:1px solid var(--br);border-radius:var(--r2)}
+.empty-wd .ei{font-size:40px;margin-bottom:10px;opacity:.35}
+.empty-wd p{font-size:13px;color:var(--t3)}
+.wd-card{background:var(--card);border:1px solid var(--br);border-radius:var(--r2);padding:15px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;gap:10px;transition:border-color .2s}
+.wd-card:hover{border-color:var(--brh)}
+.wd-ico{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.wd-ico.bkash{background:rgba(229,0,79,.12)}
+.wd-ico.nagad{background:rgba(16,185,129,.12)}
+.wd-ico.rocket{background:rgba(59,130,246,.12)}
+.wd-left{display:flex;align-items:center;gap:11px;flex:1;min-width:0}
+.wd-method{font-size:13px;font-weight:700}
+.wd-acc{font-size:11px;color:var(--t3);margin-top:2px;font-family:monospace}
+.wd-date{font-size:10px;color:var(--t3);margin-top:2px}
+.wd-right{text-align:right;flex-shrink:0}
+.wd-amount{font-size:15px;font-weight:800}
+.filter-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.ftab{padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;background:var(--bg2);border:1px solid var(--br);color:var(--t2);transition:all .2s}
+.ftab.active{background:rgba(124,58,237,.2);border-color:var(--brh);color:var(--pl)}
+</style>
 </head>
 <body>
 
@@ -22,6 +46,22 @@
     <div class="bal-lbl">Available Balance</div>
     <div class="bal-amt"><span>৳</span><span id="balShow">0.00</span></div>
     <div class="bal-sub">Minimum withdrawal: ৳<span id="minWdShow">50</span></div>
+  </div>
+
+  <!-- WITHDRAW SUMMARY -->
+  <div class="wd-summary-grid">
+    <div class="wd-sum-box">
+      <div class="wd-sum-val" id="sumTotal" style="color:var(--t1)">৳0</div>
+      <div class="wd-sum-lbl">Total Requested</div>
+    </div>
+    <div class="wd-sum-box">
+      <div class="wd-sum-val" id="sumApproved" style="color:var(--green)">৳0</div>
+      <div class="wd-sum-lbl">Total Approved</div>
+    </div>
+    <div class="wd-sum-box">
+      <div class="wd-sum-val" id="sumPending" style="color:var(--gold)">0</div>
+      <div class="wd-sum-lbl">Pending</div>
+    </div>
   </div>
 
   <!-- WITHDRAW FORM -->
@@ -51,6 +91,15 @@
 
   <!-- HISTORY -->
   <div class="stitle">📜 Withdrawal History</div>
+
+  <!-- FILTER TABS -->
+  <div class="filter-tabs">
+    <div class="ftab active" id="ft-all" onclick="filterHistory('all')">📋 All</div>
+    <div class="ftab" id="ft-pending" onclick="filterHistory('pending')">⏳ Pending</div>
+    <div class="ftab" id="ft-approved" onclick="filterHistory('approved')">✅ Approved</div>
+    <div class="ftab" id="ft-rejected" onclick="filterHistory('rejected')">❌ Rejected</div>
+  </div>
+
   <div id="histList"></div>
 
 </div>
@@ -75,17 +124,45 @@
 
 <script type="module">
 import { auth, db } from './assets/firebase/firebase.js';
-import { doc, getDoc, getDocs, addDoc, collection, query, where, orderBy, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {
+  doc, getDoc, getDocs, addDoc, collection,
+  query, where, orderBy, updateDoc, increment, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { toast, showLoader, hideLoader, ago, getSettings } from './assets/js/app.js';
+import { toast, showLoader, hideLoader, getSettings } from './assets/js/app.js';
 
 let uid, balance = 0, minWd = 50;
+let allHistory = [];
+let currentFilter = 'all';
+
+function ago(ts) {
+  if (!ts) return '';
+  const ms = Date.now() - (ts.seconds ? ts.seconds * 1000 : +ts);
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'Just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + 'd ago';
+  const mo = Math.floor(d / 30);
+  return mo + ' month' + (mo > 1 ? 's' : '') + ' ago';
+}
+
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+  return d.toLocaleDateString('en-BD', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
 
 onAuthStateChanged(auth, async user => {
   if (!user) { location.href = 'login.html'; return; }
   uid = user.uid;
 
-  const [usnap, cfg] = await Promise.all([getDoc(doc(db, 'users', uid)), getSettings(db)]);
+  const [usnap, cfg] = await Promise.all([
+    getDoc(doc(db, 'users', uid)),
+    getSettings(db)
+  ]);
   const u = usnap.data();
   if (!u || u.isBanned) { location.href = 'login.html'; return; }
 
@@ -95,69 +172,152 @@ onAuthStateChanged(auth, async user => {
   document.getElementById('balShow').textContent = balance.toFixed(2);
   document.getElementById('minWdShow').textContent = minWd;
 
-  loadHistory();
-});
-
-document.getElementById('wdBtn').addEventListener('click', async () => {
-  const method = document.getElementById('wdMethod').value;
-  const acc = document.getElementById('wdAcc').value.trim();
-  const amt = parseFloat(document.getElementById('wdAmt').value);
-
-  if (!method) { toast('Please select a payment method', 'warn'); return; }
-  if (!acc || acc.length < 11) { toast('Enter a valid 11-digit account number', 'err'); return; }
-  if (!amt || isNaN(amt)) { toast('Enter a valid amount', 'err'); return; }
-  if (amt < minWd) { toast(`Minimum withdrawal is ৳${minWd}`, 'err'); return; }
-
-  const fresh = (await getDoc(doc(db, 'users', uid))).data();
-  if (amt > parseFloat(fresh.balance || 0)) { toast('Insufficient balance', 'err'); return; }
-
-  showLoader('Submitting request...');
-  try {
-    await addDoc(collection(db, 'withdraws'), {
-      uid, username: fresh.username || '',
-      method, account: acc, amount: amt,
-      status: 'pending', createdAt: serverTimestamp()
-    });
-    await updateDoc(doc(db, 'users', uid), { balance: increment(-amt) });
-    balance -= amt;
-    document.getElementById('tbBal').textContent = balance.toFixed(2);
-    document.getElementById('balShow').textContent = balance.toFixed(2);
-    document.getElementById('wdMethod').value = '';
-    document.getElementById('wdAcc').value = '';
-    document.getElementById('wdAmt').value = '';
-    hideLoader();
-    toast('Withdrawal request submitted! ✅', 'ok');
-    loadHistory();
-  } catch {
-    hideLoader();
-    toast('Failed to submit. Try again.', 'err');
-  }
+  await loadHistory();
 });
 
 async function loadHistory() {
-  const snap = await getDocs(query(collection(db, 'withdraws'), where('uid', '==', uid), orderBy('createdAt', 'desc')));
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, 'withdraws'),
+        where('uid', '==', uid),
+        orderBy('createdAt', 'desc')
+      )
+    );
+
+    allHistory = [];
+    snap.forEach(d => allHistory.push({ id: d.id, ...d.data() }));
+    updateSummary();
+    renderHistory('all');
+  } catch (e) {
+    // If index not ready, fallback without orderBy
+    try {
+      const snap2 = await getDocs(
+        query(collection(db, 'withdraws'), where('uid', '==', uid))
+      );
+      allHistory = [];
+      snap2.forEach(d => allHistory.push({ id: d.id, ...d.data() }));
+      allHistory.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      updateSummary();
+      renderHistory('all');
+    } catch (e2) {
+      console.error(e2);
+    }
+  }
+}
+
+function updateSummary() {
+  const total = allHistory.reduce((s, w) => s + parseFloat(w.amount || 0), 0);
+  const approved = allHistory.filter(w => w.status === 'approved').reduce((s, w) => s + parseFloat(w.amount || 0), 0);
+  const pending = allHistory.filter(w => w.status === 'pending').length;
+
+  document.getElementById('sumTotal').textContent = '৳' + total.toFixed(2);
+  document.getElementById('sumApproved').textContent = '৳' + approved.toFixed(2);
+  document.getElementById('sumPending').textContent = pending;
+}
+
+function renderHistory(filter) {
+  currentFilter = filter;
+
+  // Update tab styles
+  ['all', 'pending', 'approved', 'rejected'].forEach(f => {
+    const el = document.getElementById('ft-' + f);
+    if (el) el.classList.toggle('active', f === filter);
+  });
+
+  const list = filter === 'all' ? allHistory : allHistory.filter(w => w.status === filter);
   const el = document.getElementById('histList');
-  if (snap.empty) { el.innerHTML = '<div class="empty"><div class="ei">📜</div><p>No withdrawals yet</p></div>'; return; }
+
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-wd">
+      <div class="ei">📜</div>
+      <p>${filter === 'all' ? 'No withdrawals yet' : 'No ' + filter + ' withdrawals'}</p>
+    </div>`;
+    return;
+  }
+
   const icons = { bkash: '📱', nagad: '💚', rocket: '🚀' };
+  const colors = { bkash: 'bkash', nagad: 'nagad', rocket: 'rocket' };
   const smap = { pending: 's-p', approved: 's-a', rejected: 's-r' };
+  const slabels = { pending: '⏳ Pending', approved: '✅ Approved', rejected: '❌ Rejected' };
+  const amtColor = { pending: 'var(--gold)', approved: 'var(--green)', rejected: 'var(--red)' };
+
   el.innerHTML = '';
-  snap.forEach(d => {
-    const w = d.data();
-    el.innerHTML += `<div class="wtx">
-      <div class="wtx-l">
-        <div class="wtx-ico">${icons[w.method] || '💸'}</div>
+  list.forEach(w => {
+    const method = w.method || 'unknown';
+    el.innerHTML += `<div class="wd-card">
+      <div class="wd-left">
+        <div class="wd-ico ${colors[method] || ''}">${icons[method] || '💸'}</div>
         <div>
-          <div class="wtx-method">${(w.method || '').charAt(0).toUpperCase() + (w.method || '').slice(1)}</div>
-          <div class="wtx-date">${w.account} · ${ago(w.createdAt)}</div>
+          <div class="wd-method">${method.charAt(0).toUpperCase() + method.slice(1)}</div>
+          <div class="wd-acc">${w.account || '–'}</div>
+          <div class="wd-date">${fmtDate(w.createdAt)}</div>
         </div>
       </div>
-      <div class="wtx-r">
-        <div class="wtx-amt" style="color:${w.status==='approved'?'var(--green)':w.status==='rejected'?'var(--red)':'var(--t1)'}">৳${parseFloat(w.amount).toFixed(2)}</div>
-        <div class="schip ${smap[w.status] || 's-p'}">${(w.status || 'pending').toUpperCase()}</div>
+      <div class="wd-right">
+        <div class="wd-amount" style="color:${amtColor[w.status] || 'var(--t1)'}">
+          ৳${parseFloat(w.amount || 0).toFixed(2)}
+        </div>
+        <div class="schip ${smap[w.status] || 's-p'}" style="margin-top:5px">
+          ${slabels[w.status] || '⏳ Pending'}
+        </div>
       </div>
     </div>`;
   });
 }
+
+window.filterHistory = filter => renderHistory(filter);
+
+// ── SUBMIT WITHDRAWAL ─────────────────────────────
+document.getElementById('wdBtn').addEventListener('click', async () => {
+  const method = document.getElementById('wdMethod').value;
+  const acc    = document.getElementById('wdAcc').value.trim();
+  const amt    = parseFloat(document.getElementById('wdAmt').value);
+
+  if (!method)              { toast('Select a payment method', 'warn'); return; }
+  if (!acc || acc.length < 11) { toast('Enter valid 11-digit account number', 'err'); return; }
+  if (!amt || isNaN(amt))   { toast('Enter a valid amount', 'err'); return; }
+  if (amt < minWd)          { toast(`Minimum withdrawal is ৳${minWd}`, 'err'); return; }
+
+  const fresh = (await getDoc(doc(db, 'users', uid))).data();
+  if (amt > parseFloat(fresh.balance || 0)) { toast('Insufficient balance', 'err'); return; }
+
+  showLoader('Submitting...');
+  try {
+    const wdRef = await addDoc(collection(db, 'withdraws'), {
+      uid,
+      username: fresh.username || '',
+      method, account: acc, amount: amt,
+      status: 'pending',
+      createdAt: serverTimestamp()
+    });
+
+    await updateDoc(doc(db, 'users', uid), { balance: increment(-amt) });
+
+    balance -= amt;
+    document.getElementById('tbBal').textContent  = balance.toFixed(2);
+    document.getElementById('balShow').textContent = balance.toFixed(2);
+    document.getElementById('wdMethod').value = '';
+    document.getElementById('wdAcc').value    = '';
+    document.getElementById('wdAmt').value    = '';
+
+    // Add to local list immediately
+    allHistory.unshift({
+      id: wdRef.id,
+      uid, method, account: acc, amount: amt,
+      status: 'pending',
+      createdAt: { seconds: Math.floor(Date.now() / 1000) }
+    });
+    updateSummary();
+    renderHistory(currentFilter);
+
+    hideLoader();
+    toast('Withdrawal request submitted! ✅', 'ok');
+  } catch (e) {
+    hideLoader();
+    toast('Failed. Try again.', 'err');
+  }
+});
 </script>
 </body>
 </html>
