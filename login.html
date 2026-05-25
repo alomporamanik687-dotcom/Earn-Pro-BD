@@ -17,7 +17,6 @@
   <div class="auth-card">
     <h2>Welcome Back 👋</h2>
     <p class="sub">Sign in to continue earning</p>
-
     <div class="igroup ifield-ico">
       <label>Email Address</label>
       <span class="ico">✉️</span>
@@ -40,11 +39,23 @@
 </div>
 
 <script type="module">
-import { auth } from './assets/firebase/firebase.js';
+import { auth, db } from './assets/firebase/firebase.js';
 import { signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader } from './assets/js/app.js';
 
-onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
+onAuthStateChanged(auth, async u => {
+  if (!u) return;
+  const snap = await getDoc(doc(db, 'users', u.uid));
+  const data = snap.data();
+  if (data?.isBanned) {
+    toast('Your account has been banned. Contact support.', 'err');
+    const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await signOut(auth);
+    return;
+  }
+  location.href = 'home.html';
+});
 
 document.getElementById('eyeBtn').addEventListener('click', function() {
   const p = document.getElementById('pw');
@@ -58,7 +69,16 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   if (!em || !pw) { toast('Please fill all fields', 'err'); return; }
   showLoader('Signing in...');
   try {
-    await signInWithEmailAndPassword(auth, em, pw);
+    const cred = await signInWithEmailAndPassword(auth, em, pw);
+    const snap = await getDoc(doc(db, 'users', cred.user.uid));
+    const data = snap.data();
+    if (data?.isBanned) {
+      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      await signOut(auth);
+      hideLoader();
+      toast('Your account has been banned.', 'err');
+      return;
+    }
     toast('Welcome back! 🎉', 'ok');
     setTimeout(() => location.href = 'home.html', 400);
   } catch (e) {
