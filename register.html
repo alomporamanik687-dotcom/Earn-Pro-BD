@@ -5,10 +5,31 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>EarnPro – Register</title>
 <link rel="stylesheet" href="assets/css/style.css">
-<style>body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}</style>
+<style>
+body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
+.blocked-screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;z-index:9999}
+.blocked-ico{font-size:72px;margin-bottom:20px}
+.blocked-title{font-size:24px;font-weight:900;color:var(--red);margin-bottom:10px}
+.blocked-sub{font-size:14px;color:var(--t2);line-height:1.7;max-width:320px}
+.blocked-badge{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:var(--r2);padding:12px 20px;margin-top:16px;font-size:13px;color:var(--red);font-weight:600}
+</style>
 </head>
 <body>
-<div class="auth-pg fade-in" style="width:100%">
+
+<!-- BLOCKED SCREEN -->
+<div class="blocked-screen" id="blockedScreen">
+  <div class="blocked-ico">🚫</div>
+  <div class="blocked-title">Device Blocked</div>
+  <div class="blocked-sub">
+    An account already exists from this device.<br><br>
+    Only <strong>one account per device</strong> is allowed on EarnPro.
+  </div>
+  <div class="blocked-badge">⚠️ Multiple accounts are not permitted</div>
+  <a href="login.html" style="margin-top:20px" class="btn btn-ghost">← Login to existing account</a>
+</div>
+
+<!-- REGISTER FORM -->
+<div class="auth-pg fade-in" style="width:100%" id="registerForm">
   <div class="auth-logo">
     <div class="al">💎</div>
     <h1>EarnPro</h1>
@@ -17,7 +38,6 @@
   <div class="auth-card">
     <h2>Create Account ✨</h2>
     <p class="sub">Join thousands of active earners</p>
-
     <div class="igroup ifield-ico">
       <label>Username</label>
       <span class="ico">👤</span>
@@ -46,17 +66,35 @@
 <script type="module">
 import { auth, db } from './assets/firebase/firebase.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { doc, setDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {
+  doc, setDoc, collection, query, where,
+  getDocs, updateDoc, increment, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
+import { getDeviceFingerprint } from './assets/js/fingerprint.js';
 
 onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
 
 const urlRef = new URLSearchParams(location.search).get('ref');
-if (urlRef) { document.getElementById('ref').value = urlRef.toUpperCase(); }
+if (urlRef) document.getElementById('ref').value = urlRef.toUpperCase();
+document.getElementById('ref').addEventListener('input', function() { this.value = this.value.toUpperCase(); });
 
-document.getElementById('ref').addEventListener('input', function() {
-  this.value = this.value.toUpperCase();
-});
+// Check device on load
+async function checkDevice() {
+  const fp = await getDeviceFingerprint();
+  const q = query(collection(db, 'devices'), where('fingerprint', '==', fp));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    // Device already registered
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('blockedScreen').style.display = 'flex';
+    return false;
+  }
+  return fp;
+}
+
+let deviceFp = null;
+checkDevice().then(fp => { deviceFp = fp; });
 
 document.getElementById('regBtn').addEventListener('click', async () => {
   const un = document.getElementById('un').value.trim();
@@ -69,10 +107,24 @@ document.getElementById('regBtn').addEventListener('click', async () => {
   if (!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, underscore only', 'err'); return; }
   if (pw.length < 6) { toast('Password must be at least 6 characters', 'err'); return; }
 
+  showLoader('Verifying device...');
+
+  // Re-check device fingerprint
+  const fp = await getDeviceFingerprint();
+  const fpCheck = query(collection(db, 'devices'), where('fingerprint', '==', fp));
+  const fpSnap = await getDocs(fpCheck);
+
+  if (!fpSnap.empty) {
+    hideLoader();
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('blockedScreen').style.display = 'flex';
+    return;
+  }
+
   showLoader('Creating your account...');
+
   try {
     let referrerId = null;
-
     if (rf) {
       const q = query(collection(db, 'users'), where('referralCode', '==', rf));
       const snap = await getDocs(q);
@@ -84,6 +136,7 @@ document.getElementById('regBtn').addEventListener('click', async () => {
     const uid = cred.user.uid;
     const code = refCode(uid);
 
+    // Save user
     await setDoc(doc(db, 'users', uid), {
       uid, username: un, email: em,
       balance: 0, totalEarned: 0,
@@ -93,10 +146,21 @@ document.getElementById('regBtn').addEventListener('click', async () => {
       isActive: true, isBanned: false,
       claimedTasks: [],
       dailyBonusClaimed: null,
+      deviceFingerprint: fp,
       createdAt: serverTimestamp(),
       lastSeen: serverTimestamp()
     });
 
+    // Save device fingerprint to block future registrations
+    await setDoc(doc(db, 'devices', fp), {
+      fingerprint: fp,
+      uid: uid,
+      username: un,
+      registeredAt: serverTimestamp(),
+      userAgent: navigator.userAgent.slice(0, 200)
+    });
+
+    // Referral bonus
     if (referrerId) {
       const setSnap = await getDocs(collection(db, 'settings'));
       const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
@@ -113,6 +177,7 @@ document.getElementById('regBtn').addEventListener('click', async () => {
 
     toast('Account created! Welcome 🎉', 'ok');
     setTimeout(() => location.href = 'home.html', 500);
+
   } catch (e) {
     hideLoader();
     const m = {
