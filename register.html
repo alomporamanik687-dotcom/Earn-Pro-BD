@@ -7,29 +7,55 @@
 <link rel="stylesheet" href="assets/css/style.css">
 <style>
 body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
-.blocked-screen{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;z-index:9999}
-.blocked-ico{font-size:72px;margin-bottom:20px}
-.blocked-title{font-size:24px;font-weight:900;color:var(--red);margin-bottom:10px}
-.blocked-sub{font-size:14px;color:var(--t2);line-height:1.7;max-width:320px}
-.blocked-badge{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:var(--r2);padding:12px 20px;margin-top:16px;font-size:13px;color:var(--red);font-weight:600}
+
+/* BLOCKED SCREEN */
+.blocked-wrap{
+  position:fixed;inset:0;background:var(--bg);
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:30px;text-align:center;z-index:9999;
+}
+.blocked-ico{font-size:80px;margin-bottom:18px;animation:shake 0.5s ease}
+@keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg)}75%{transform:rotate(8deg)}}
+.blocked-box{
+  background:var(--card);border:1px solid rgba(239,68,68,.35);
+  border-radius:var(--r4);padding:28px 24px;max-width:360px;width:100%;
+}
+.blocked-title{font-size:22px;font-weight:900;color:var(--red);margin-bottom:10px}
+.blocked-msg{font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:18px}
+.blocked-rule{
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);
+  border-radius:var(--r2);padding:11px 14px;font-size:12px;color:var(--red);
+  font-weight:600;margin-bottom:20px;
+}
 </style>
 </head>
 <body>
 
-<!-- BLOCKED SCREEN -->
-<div class="blocked-screen" id="blockedScreen">
+<!-- BLOCKED SCREEN (shown if device already has account) -->
+<div class="blocked-wrap" id="blockedScreen">
   <div class="blocked-ico">🚫</div>
-  <div class="blocked-title">Device Blocked</div>
-  <div class="blocked-sub">
-    An account already exists from this device.<br><br>
-    Only <strong>one account per device</strong> is allowed on EarnPro.
+  <div class="blocked-box">
+    <div class="blocked-title">Device Already Registered</div>
+    <div class="blocked-msg">
+      An account already exists on this device.<br><br>
+      <strong style="color:var(--t1)">EarnPro allows only one account per device.</strong><br>
+      Please login with your existing account.
+    </div>
+    <div class="blocked-rule">⚠️ Multiple accounts = permanent ban</div>
+    <a href="login.html" class="btn btn-p btn-full" style="margin-bottom:10px">🔑 Login to My Account</a>
+    <div style="font-size:11px;color:var(--t3)">If you believe this is a mistake, contact support.</div>
   </div>
-  <div class="blocked-badge">⚠️ Multiple accounts are not permitted</div>
-  <a href="login.html" style="margin-top:20px" class="btn btn-ghost">← Login to existing account</a>
+</div>
+
+<!-- LOADING SCREEN -->
+<div class="blocked-wrap" id="loadingScreen" style="display:flex">
+  <div class="splash-logo">💎</div>
+  <div style="margin-top:16px"><div class="splash-spin"></div></div>
+  <div style="margin-top:12px;font-size:13px;color:var(--t3)">Checking device...</div>
 </div>
 
 <!-- REGISTER FORM -->
-<div class="auth-pg fade-in" style="width:100%" id="registerForm">
+<div class="auth-pg" style="width:100%;display:none" id="registerForm">
   <div class="auth-logo">
     <div class="al">💎</div>
     <h1>EarnPro</h1>
@@ -67,40 +93,56 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 import { auth, db } from './assets/firebase/firebase.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {
-  doc, setDoc, collection, query, where,
-  getDocs, updateDoc, increment, serverTimestamp
+  doc, setDoc, getDoc, collection, query,
+  where, getDocs, updateDoc, increment, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
 import { getDeviceFingerprint } from './assets/js/fingerprint.js';
 
+// If already logged in, go home
 onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
 
+// Referral from URL
 const urlRef = new URLSearchParams(location.search).get('ref');
 if (urlRef) document.getElementById('ref').value = urlRef.toUpperCase();
-document.getElementById('ref').addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+document.getElementById('ref').addEventListener('input', function(){ this.value = this.value.toUpperCase(); });
 
-// Check device on load
-async function checkDevice() {
-  const fp = await getDeviceFingerprint();
-  const q = query(collection(db, 'devices'), where('fingerprint', '==', fp));
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    // Device already registered
-    document.getElementById('registerForm').style.display = 'none';
-    document.getElementById('blockedScreen').style.display = 'flex';
-    return false;
+// ── DEVICE CHECK ON LOAD ─────────────────────────────
+let deviceFp = null;
+
+async function initDeviceCheck() {
+  try {
+    deviceFp = await getDeviceFingerprint();
+
+    // Check if this fingerprint already registered
+    const devSnap = await getDoc(doc(db, 'devices', deviceFp));
+
+    document.getElementById('loadingScreen').style.display = 'none';
+
+    if (devSnap.exists()) {
+      // BLOCKED — device already has account
+      document.getElementById('blockedScreen').style.display = 'flex';
+    } else {
+      // OK — show register form
+      document.getElementById('registerForm').style.display = 'flex';
+      document.getElementById('registerForm').classList.add('fade-in');
+    }
+  } catch(e) {
+    // If fingerprint fails (privacy mode etc) — allow registration
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'flex';
+    document.getElementById('registerForm').classList.add('fade-in');
   }
-  return fp;
 }
 
-let deviceFp = null;
-checkDevice().then(fp => { deviceFp = fp; });
+initDeviceCheck();
 
+// ── REGISTER ─────────────────────────────────────────
 document.getElementById('regBtn').addEventListener('click', async () => {
-  const un = document.getElementById('un').value.trim();
-  const em = document.getElementById('em').value.trim();
-  const pw = document.getElementById('pw').value;
-  const rf = document.getElementById('ref').value.trim().toUpperCase();
+  const un  = document.getElementById('un').value.trim();
+  const em  = document.getElementById('em').value.trim();
+  const pw  = document.getElementById('pw').value;
+  const rf  = document.getElementById('ref').value.trim().toUpperCase();
 
   if (!un || !em || !pw) { toast('Please fill all required fields', 'err'); return; }
   if (un.length < 3) { toast('Username must be at least 3 characters', 'err'); return; }
@@ -109,21 +151,24 @@ document.getElementById('regBtn').addEventListener('click', async () => {
 
   showLoader('Verifying device...');
 
-  // Re-check device fingerprint
-  const fp = await getDeviceFingerprint();
-  const fpCheck = query(collection(db, 'devices'), where('fingerprint', '==', fp));
-  const fpSnap = await getDocs(fpCheck);
-
-  if (!fpSnap.empty) {
-    hideLoader();
-    document.getElementById('registerForm').style.display = 'none';
-    document.getElementById('blockedScreen').style.display = 'flex';
-    return;
+  // Double-check fingerprint before creating account
+  try {
+    const fp = deviceFp || await getDeviceFingerprint();
+    const devCheck = await getDoc(doc(db, 'devices', fp));
+    if (devCheck.exists()) {
+      hideLoader();
+      document.getElementById('registerForm').style.display = 'none';
+      document.getElementById('blockedScreen').style.display = 'flex';
+      return;
+    }
+  } catch(e) {
+    // fingerprint failed — continue without device lock
   }
 
-  showLoader('Creating your account...');
+  showLoader('Creating account...');
 
   try {
+    // Referral validation
     let referrerId = null;
     if (rf) {
       const q = query(collection(db, 'users'), where('referralCode', '==', rf));
@@ -132,16 +177,19 @@ document.getElementById('regBtn').addEventListener('click', async () => {
       referrerId = snap.docs[0].id;
     }
 
+    // Create Firebase Auth user
     const cred = await createUserWithEmailAndPassword(auth, em, pw);
     const uid = cred.user.uid;
     const code = refCode(uid);
+    const fp = deviceFp || await getDeviceFingerprint();
 
-    // Save user
+    // Save user document
     await setDoc(doc(db, 'users', uid), {
       uid, username: un, email: em,
       balance: 0, totalEarned: 0,
       adsWatched: 0, referralCount: 0,
-      referralCode: code, referredBy: referrerId || null,
+      referralCode: code,
+      referredBy: referrerId || null,
       membership: 'free', role: 'user',
       isActive: true, isBanned: false,
       claimedTasks: [],
@@ -151,14 +199,15 @@ document.getElementById('regBtn').addEventListener('click', async () => {
       lastSeen: serverTimestamp()
     });
 
-    // Save device fingerprint to block future registrations
-    await setDoc(doc(db, 'devices', fp), {
-      fingerprint: fp,
-      uid: uid,
-      username: un,
-      registeredAt: serverTimestamp(),
-      userAgent: navigator.userAgent.slice(0, 200)
-    });
+    // Lock this device (only if fingerprint available)
+    if (fp) {
+      await setDoc(doc(db, 'devices', fp), {
+        fingerprint: fp,
+        uid, username: un,
+        registeredAt: serverTimestamp(),
+        ua: navigator.userAgent.slice(0, 150)
+      });
+    }
 
     // Referral bonus
     if (referrerId) {
@@ -178,16 +227,17 @@ document.getElementById('regBtn').addEventListener('click', async () => {
     toast('Account created! Welcome 🎉', 'ok');
     setTimeout(() => location.href = 'home.html', 500);
 
-  } catch (e) {
+  } catch(e) {
     hideLoader();
-    const m = {
-      'auth/email-already-in-use': 'Email is already registered',
+    const msgs = {
+      'auth/email-already-in-use': 'Email already registered. Please login.',
       'auth/invalid-email': 'Invalid email address',
-      'auth/weak-password': 'Password is too weak'
+      'auth/weak-password': 'Password too weak — use 6+ characters'
     };
-    toast(m[e.code] || 'Registration failed. Try again.', 'err');
+    toast(msgs[e.code] || 'Registration failed. Try again.', 'err');
   }
 });
 </script>
 </body>
 </html>
+
