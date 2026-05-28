@@ -104,7 +104,11 @@ let deviceFp = null;
 
 async function initDeviceCheck() {
   try {
-    deviceFp = await getDeviceFingerprint();
+    const fpPromise = getDeviceFingerprint();
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 4000)
+    );
+    deviceFp = await Promise.race([fpPromise, timeout]);
     const devSnap = await getDoc(doc(db, 'devices', deviceFp));
     document.getElementById('loadingScreen').style.display = 'none';
     if (devSnap.exists()) {
@@ -114,6 +118,7 @@ async function initDeviceCheck() {
       document.getElementById('registerForm').classList.add('fade-in');
     }
   } catch(e) {
+    deviceFp = null;
     document.getElementById('loadingScreen').style.display = 'none';
     document.getElementById('registerForm').style.display = 'flex';
     document.getElementById('registerForm').classList.add('fade-in');
