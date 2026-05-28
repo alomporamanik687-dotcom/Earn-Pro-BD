@@ -9,7 +9,6 @@
 body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
 .blocked-wrap{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;z-index:9999}
 .blocked-box{background:var(--card);border:1px solid rgba(239,68,68,.35);border-radius:var(--r4);padding:28px 22px;max-width:360px;width:100%}
-.blocked-ico{font-size:72px;margin-bottom:16px}
 .blocked-title{font-size:22px;font-weight:900;color:var(--red);margin-bottom:10px}
 .blocked-msg{font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:14px}
 .blocked-rule{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:var(--r2);padding:10px 14px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:18px}
@@ -19,17 +18,16 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 
 <!-- BLOCKED SCREEN -->
 <div class="blocked-wrap" id="blockedScreen">
-  <div class="blocked-ico">🚫</div>
+  <div style="font-size:72px;margin-bottom:16px">🚫</div>
   <div class="blocked-box">
     <div class="blocked-title">Already Registered</div>
     <div class="blocked-msg">An account already exists on this device.<br><br><strong style="color:var(--t1)">Only one account per device is allowed.</strong></div>
     <div class="blocked-rule">⚠️ Multiple accounts are not permitted</div>
     <a href="login.html" class="btn btn-p btn-full" style="margin-bottom:10px">🔑 Login to My Account</a>
-    <div style="font-size:11px;color:var(--t3)">Contact support if this is a mistake.</div>
   </div>
 </div>
 
-<!-- REGISTER FORM — shown immediately, no waiting -->
+<!-- REGISTER FORM -->
 <div class="auth-pg fade-in" style="width:100%" id="registerForm">
   <div class="auth-logo">
     <div class="al">💎</div>
@@ -67,86 +65,24 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 <script type="module">
 import { auth, db } from './assets/firebase/firebase.js';
 import { createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { doc, setDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
 
 onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
 
+// Referral from URL
 const urlRef = new URLSearchParams(location.search).get('ref');
 if (urlRef) document.getElementById('ref').value = urlRef.toUpperCase();
 document.getElementById('ref').addEventListener('input', function(){ this.value = this.value.toUpperCase(); });
 
-// ── SIMPLE DEVICE ID ─────────────────────────────────
-// Uses localStorage as primary lock + canvas as secondary
-function getLocalDeviceId() {
-  let id = localStorage.getItem('ep_device_id');
-  if (!id) {
-    // Generate stable ID from device properties
-    const parts = [
-      navigator.userAgent,
-      screen.width, screen.height, screen.colorDepth,
-      navigator.hardwareConcurrency || 0,
-      navigator.language,
-      new Date().getTimezoneOffset(),
-      navigator.platform || ''
-    ].join('|');
-    // Simple hash
-    let hash = 0;
-    for (let i = 0; i < parts.length; i++) {
-      const ch = parts.charCodeAt(i);
-      hash = ((hash << 5) - hash) + ch;
-      hash |= 0;
-    }
-    id = 'ep_' + Math.abs(hash).toString(36) + '_' + Date.now().toString(36);
-    localStorage.setItem('ep_device_id', id);
-  }
-  return id;
-}
-
-// Canvas fingerprint for Firestore key (more unique)
-async function getCanvasFp() {
-  try {
-    const c = document.createElement('canvas');
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#f60';
-    ctx.fillRect(10, 10, 100, 50);
-    ctx.fillStyle = '#069';
-    ctx.font = '12px Arial';
-    ctx.fillText('EarnPro', 2, 15);
-    const raw = c.toDataURL() + navigator.userAgent + screen.width + screen.height + navigator.hardwareConcurrency;
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
-    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,24);
-  } catch {
-    return 'fp_' + Math.abs(navigator.userAgent.split('').reduce((a,c)=>((a<<5)-a)+c.charCodeAt(0)|0,0)).toString(36);
-  }
-}
-
-// ── CHECK DEVICE ON LOAD ─────────────────────────────
-// Check localStorage first (instant) — if registered on this browser/device before
-const localId = getLocalDeviceId();
-const localRegistered = localStorage.getItem('ep_registered_' + localId);
-
-if (localRegistered === 'true') {
-  // Blocked immediately — no loading screen needed
+// Simple device lock using localStorage only
+const DEV_KEY = 'ep_dev_registered';
+if (localStorage.getItem(DEV_KEY) === 'yes') {
   document.getElementById('registerForm').style.display = 'none';
   document.getElementById('blockedScreen').style.display = 'flex';
 }
 
-// Also check Firestore in background (catches same device, different browser)
-(async () => {
-  try {
-    const fp = await getCanvasFp();
-    const devSnap = await getDoc(doc(db, 'devices', fp));
-    if (devSnap.exists() && document.getElementById('registerForm').style.display !== 'none') {
-      document.getElementById('registerForm').style.display = 'none';
-      document.getElementById('blockedScreen').style.display = 'flex';
-    }
-  } catch(e) {
-    // Firestore check failed — don't block, allow registration
-  }
-})();
-
-// ── REGISTER ─────────────────────────────────────────
+// REGISTER
 document.getElementById('regBtn').addEventListener('click', async () => {
   const un = document.getElementById('un').value.trim();
   const em = document.getElementById('em').value.trim();
@@ -158,6 +94,13 @@ document.getElementById('regBtn').addEventListener('click', async () => {
   if (!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, underscore only', 'err'); return; }
   if (pw.length < 6) { toast('Password min 6 characters', 'err'); return; }
 
+  // Check localStorage block first
+  if (localStorage.getItem(DEV_KEY) === 'yes') {
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('blockedScreen').style.display = 'flex';
+    return;
+  }
+
   showLoader('Creating account...');
 
   try {
@@ -166,28 +109,20 @@ document.getElementById('regBtn').addEventListener('click', async () => {
     if (rf) {
       const q = query(collection(db, 'users'), where('referralCode', '==', rf));
       const snap = await getDocs(q);
-      if (snap.empty) { hideLoader(); toast('Invalid referral code', 'err'); return; }
+      if (snap.empty) {
+        hideLoader();
+        toast('Invalid referral code', 'err');
+        return;
+      }
       referrerId = snap.docs[0].id;
     }
 
-    // Get fingerprint
-    const fp = await getCanvasFp();
-
-    // Final Firestore device check
-    const devSnap = await getDoc(doc(db, 'devices', fp));
-    if (devSnap.exists()) {
-      hideLoader();
-      localStorage.setItem('ep_registered_' + localId, 'true');
-      document.getElementById('registerForm').style.display = 'none';
-      document.getElementById('blockedScreen').style.display = 'flex';
-      return;
-    }
-
-    // Create account
+    // Create Firebase Auth account
     const cred = await createUserWithEmailAndPassword(auth, em, pw);
     const uid = cred.user.uid;
     const code = refCode(uid);
 
+    // Save user to Firestore
     await setDoc(doc(db, 'users', uid), {
       uid, username: un, email: em,
       balance: 0, totalEarned: 0,
@@ -198,33 +133,32 @@ document.getElementById('regBtn').addEventListener('click', async () => {
       isActive: true, isBanned: false,
       claimedTasks: [],
       dailyBonusClaimed: null,
-      deviceFingerprint: fp,
       createdAt: serverTimestamp(),
       lastSeen: serverTimestamp()
     });
 
-    // Lock device in Firestore
-    await setDoc(doc(db, 'devices', fp), {
-      fingerprint: fp, uid, username: un,
-      registeredAt: serverTimestamp(),
-      ua: navigator.userAgent.slice(0, 150)
-    });
-
-    // Lock device in localStorage
-    localStorage.setItem('ep_registered_' + localId, 'true');
+    // Lock this device via localStorage
+    localStorage.setItem(DEV_KEY, 'yes');
     localStorage.setItem('ep_uid', uid);
 
     // Referral bonus
     if (referrerId) {
-      const setSnap = await getDocs(collection(db, 'settings'));
-      const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
-      await updateDoc(doc(db, 'users', referrerId), {
-        balance: increment(bonus), totalEarned: increment(bonus), referralCount: increment(1)
-      });
-      await setDoc(doc(db, 'referrals', uid), {
-        referrerId, newUserId: uid, bonus,
-        newUsername: un, createdAt: serverTimestamp()
-      });
+      try {
+        const setSnap = await getDocs(collection(db, 'settings'));
+        const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
+        await updateDoc(doc(db, 'users', referrerId), {
+          balance: increment(bonus),
+          totalEarned: increment(bonus),
+          referralCount: increment(1)
+        });
+        await setDoc(doc(db, 'referrals', uid), {
+          referrerId, newUserId: uid, bonus,
+          newUsername: un, createdAt: serverTimestamp()
+        });
+      } catch(refErr) {
+        // Referral bonus failed silently — account still created
+        console.warn('Referral bonus error:', refErr);
+      }
     }
 
     toast('Account created! Welcome 🎉', 'ok');
@@ -232,12 +166,15 @@ document.getElementById('regBtn').addEventListener('click', async () => {
 
   } catch(e) {
     hideLoader();
+    console.error('Registration error:', e.code, e.message);
     const msgs = {
-      'auth/email-already-in-use': 'Email already registered. Please login.',
+      'auth/email-already-in-use': 'This email is already registered. Please login.',
       'auth/invalid-email': 'Invalid email address',
-      'auth/weak-password': 'Password too weak'
+      'auth/weak-password': 'Password too weak — use 6+ characters',
+      'auth/network-request-failed': 'No internet connection. Check your network.',
+      'auth/too-many-requests': 'Too many attempts. Please wait a moment.'
     };
-    toast(msgs[e.code] || 'Registration failed. Try again.', 'err');
+    toast(msgs[e.code] || 'Registration failed: ' + (e.message || 'Try again'), 'err');
   }
 });
 </script>
