@@ -44,15 +44,20 @@ import { signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail 
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader } from './assets/js/app.js';
 
+// If already authenticated, check ban status and redirect
 onAuthStateChanged(auth, async u => {
   if (!u) return;
-  const snap = await getDoc(doc(db, 'users', u.uid));
-  const data = snap.data();
-  if (data?.isBanned) {
-    toast('Your account has been banned. Contact support.', 'err');
-    const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    await signOut(auth);
-    return;
+  try {
+    const snap = await getDoc(doc(db, 'users', u.uid));
+    if (snap.exists() && snap.data()?.isBanned) {
+      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      await signOut(auth);
+      toast('Your account has been banned. Contact support.', 'err');
+      return;
+    }
+  } catch (e) {
+    // If we can't read the user doc, still allow login (non-fatal)
+    console.warn('EarnPro: ban check failed:', e);
   }
   location.href = 'home.html';
 });
@@ -64,44 +69,51 @@ document.getElementById('eyeBtn').addEventListener('click', function() {
 });
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
-  const em = document.getElementById('em').value.trim();
+  const em = document.getElementById('em').value.trim().toLowerCase();
   const pw = document.getElementById('pw').value;
   if (!em || !pw) { toast('Please fill all fields', 'err'); return; }
   showLoader('Signing in...');
   try {
     const cred = await signInWithEmailAndPassword(auth, em, pw);
-    const snap = await getDoc(doc(db, 'users', cred.user.uid));
-    const data = snap.data();
-    if (data?.isBanned) {
-      const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-      await signOut(auth);
-      hideLoader();
-      toast('Your account has been banned.', 'err');
-      return;
+    try {
+      const snap = await getDoc(doc(db, 'users', cred.user.uid));
+      if (snap.exists() && snap.data()?.isBanned) {
+        const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        await signOut(auth);
+        hideLoader();
+        toast('Your account has been banned. Contact support.', 'err');
+        return;
+      }
+    } catch (e) {
+      // Non-fatal: can't read user doc but auth succeeded
+      console.warn('EarnPro: user doc read failed on login:', e);
     }
     toast('Welcome back! 🎉', 'ok');
     setTimeout(() => location.href = 'home.html', 400);
   } catch (e) {
     hideLoader();
     const m = {
-      'auth/user-not-found': 'No account with this email',
-      'auth/wrong-password': 'Incorrect password',
-      'auth/invalid-email': 'Invalid email address',
-      'auth/too-many-requests': 'Too many attempts, try later',
-      'auth/invalid-credential': 'Invalid email or password'
+      'auth/user-not-found':       'No account found with this email.',
+      'auth/wrong-password':       'Incorrect password. Try again.',
+      'auth/invalid-email':        'Invalid email address.',
+      'auth/too-many-requests':    'Too many failed attempts. Please wait a few minutes.',
+      'auth/invalid-credential':   'Invalid email or password.',
+      'auth/network-request-failed':'Network error. Check your connection.'
     };
-    toast(m[e.code] || 'Login failed. Try again.', 'err');
+    toast(m[e.code] || 'Login failed. Please try again.', 'err');
   }
 });
 
 document.getElementById('forgotBtn').addEventListener('click', async e => {
   e.preventDefault();
   const em = document.getElementById('em').value.trim();
-  if (!em) { toast('Enter your email first', 'warn'); return; }
+  if (!em) { toast('Enter your email address first', 'warn'); return; }
   try {
     await sendPasswordResetEmail(auth, em);
     toast('Password reset email sent 📧', 'ok');
-  } catch { toast('Failed to send reset email', 'err'); }
+  } catch (e) {
+    toast(e.code === 'auth/user-not-found' ? 'No account with this email.' : 'Failed to send reset email.', 'err');
+  }
 });
 </script>
 </body>
