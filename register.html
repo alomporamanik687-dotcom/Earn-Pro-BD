@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="assets/css/style.css">
 <style>
 body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
+
+/* BLOCKED SCREEN */
 .blocked-wrap{
   position:fixed;inset:0;background:var(--bg);
   display:none;flex-direction:column;align-items:center;justify-content:center;
@@ -29,6 +31,7 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 </head>
 <body>
 
+<!-- BLOCKED SCREEN (shown if device already has account) -->
 <div class="blocked-wrap" id="blockedScreen">
   <div class="blocked-ico">🚫</div>
   <div class="blocked-box">
@@ -44,12 +47,14 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
   </div>
 </div>
 
+<!-- LOADING SCREEN -->
 <div class="blocked-wrap" id="loadingScreen" style="display:flex">
   <div class="splash-logo">💎</div>
   <div style="margin-top:16px"><div class="splash-spin"></div></div>
-  <div style="margin-top:12px;font-size:13px;color:var(--t3)">Checking device...</div>
+  <div style="margin-top:12px;font-size:13px;color:var(--t3)" id="loadingMsg">Checking device...</div>
 </div>
 
+<!-- REGISTER FORM -->
 <div class="auth-pg" style="width:100%;display:none" id="registerForm">
   <div class="auth-logo">
     <div class="al">💎</div>
@@ -93,150 +98,276 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
 import { getDeviceFingerprint } from './assets/js/fingerprint.js';
+import { getDeviceId } from './assets/js/device.js';
 
+// ── If already logged in, go home ──────────────────────────────
 onAuthStateChanged(auth, u => { if (u) location.href = 'home.html'; });
 
+// ── Referral from URL ───────────────────────────────────────────
 const urlRef = new URLSearchParams(location.search).get('ref');
 if (urlRef) document.getElementById('ref').value = urlRef.toUpperCase();
 document.getElementById('ref').addEventListener('input', function(){ this.value = this.value.toUpperCase(); });
 
+// ── UI helpers ──────────────────────────────────────────────────
+function showForm() {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('registerForm').style.display = 'flex';
+  document.getElementById('registerForm').classList.add('fade-in');
+}
+
+function showBlocked() {
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('registerForm').style.display = 'none';
+  document.getElementById('blockedScreen').style.display = 'flex';
+}
+
+function setLoadingMsg(msg) {
+  const el = document.getElementById('loadingMsg');
+  if (el) el.textContent = msg;
+}
+
+// ── DEVICE CHECK ON PAGE LOAD ───────────────────────────────────
+// NOTE: Firestore rules allow public read on /devices and /users
+// so this check works BEFORE the user creates an account.
 let deviceFp = null;
+let deviceId = null;
+
+// Hard timeout: if device check takes >6s, just show the form
+const checkTimeout = setTimeout(() => {
+  if (document.getElementById('loadingScreen').style.display !== 'none') {
+    console.warn('EarnPro: device check timed out, allowing registration');
+    showForm();
+  }
+}, 6000);
 
 async function initDeviceCheck() {
   try {
-    const fpPromise = getDeviceFingerprint();
-    const timeout = new Promise(resolve =>
-      setTimeout(() => resolve(null), 3000)
-    );
-    deviceFp = await Promise.race([fpPromise, timeout]);
+    setLoadingMsg('Checking device...');
 
-    if (!deviceFp) {
-      document.getElementById('loadingScreen').style.display = 'none';
-      document.getElementById('registerForm').style.display = 'flex';
-      return;
+    // Get both IDs (fingerprint = hardware, deviceId = localStorage)
+    [deviceFp, deviceId] = await Promise.all([
+      getDeviceFingerprint().catch(() => ''),
+      Promise.resolve(getDeviceId())
+    ]);
+
+    let blocked = false;
+
+    // Check fingerprint in Firestore
+    if (deviceFp) {
+      try {
+        const fpSnap = await getDoc(doc(db, 'devices', deviceFp));
+        if (fpSnap.exists()) blocked = true;
+      } catch (e) {
+        // If permission denied (rules not deployed yet), don't block the user
+        console.warn('EarnPro: device fingerprint check failed:', e.code);
+        if (e.code !== 'permission-denied') throw e;
+      }
     }
 
-    const devSnap = await getDoc(doc(db, 'devices', deviceFp));
-    document.getElementById('loadingScreen').style.display = 'none';
-    if (devSnap.exists()) {
-      document.getElementById('blockedScreen').style.display = 'flex';
+    // Also check localStorage deviceId as secondary check
+    if (!blocked && deviceId) {
+      try {
+        const didSnap = await getDoc(doc(db, 'devices', 'lid_' + deviceId));
+        if (didSnap.exists()) blocked = true;
+      } catch (e) {
+        console.warn('EarnPro: device ID check failed:', e.code);
+      }
+    }
+
+    clearTimeout(checkTimeout);
+
+    if (blocked) {
+      showBlocked();
     } else {
-      document.getElementById('registerForm').style.display = 'flex';
-      document.getElementById('registerForm').classList.add('fade-in');
+      showForm();
     }
-  } catch(e) {
-    deviceFp = null;
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('registerForm').style.display = 'flex';
-    document.getElementById('registerForm').classList.add('fade-in');
+
+  } catch (e) {
+    // Any unexpected error: allow registration, don't block real users
+    console.warn('EarnPro: device check error, allowing registration:', e);
+    clearTimeout(checkTimeout);
+    showForm();
   }
 }
 
 initDeviceCheck();
 
+// ── REGISTRATION ────────────────────────────────────────────────
 document.getElementById('regBtn').addEventListener('click', async () => {
-  const un  = document.getElementById('un').value.trim();
-  const em  = document.getElementById('em').value.trim();
-  const pw  = document.getElementById('pw').value;
-  const rf  = document.getElementById('ref').value.trim().toUpperCase();
+  const un = document.getElementById('un').value.trim();
+  const em = document.getElementById('em').value.trim().toLowerCase();
+  const pw = document.getElementById('pw').value;
+  const rf = document.getElementById('ref').value.trim().toUpperCase();
 
-  if (!un || !em || !pw) { toast('Please fill all required fields', 'err'); return; }
+  // ── Client-side validation ──────────────────────────────────
+  if (!un) { toast('Please enter a username', 'err'); return; }
+  if (!em) { toast('Please enter your email address', 'err'); return; }
+  if (!pw) { toast('Please enter a password', 'err'); return; }
   if (un.length < 3) { toast('Username must be at least 3 characters', 'err'); return; }
+  if (un.length > 20) { toast('Username must be 20 characters or less', 'err'); return; }
   if (!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, underscore only', 'err'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Please enter a valid email address', 'err'); return; }
   if (pw.length < 6) { toast('Password must be at least 6 characters', 'err'); return; }
 
+  // ── Double-check device hasn't registered while form was open ─
   showLoader('Verifying device...');
-
   try {
-    const fp = deviceFp || await getDeviceFingerprint();
-    const devCheck = await getDoc(doc(db, 'devices', fp));
-    if (devCheck.exists()) {
-      hideLoader();
-      document.getElementById('registerForm').style.display = 'none';
-      document.getElementById('blockedScreen').style.display = 'flex';
-      return;
+    const fp = deviceFp || await getDeviceFingerprint().catch(() => '');
+    const did = deviceId || getDeviceId();
+
+    if (fp) {
+      const fpCheck = await getDoc(doc(db, 'devices', fp)).catch(() => null);
+      if (fpCheck && fpCheck.exists()) {
+        hideLoader();
+        showBlocked();
+        return;
+      }
     }
-  } catch(e) {
-    // fingerprint failed — continue
+    if (did) {
+      const didCheck = await getDoc(doc(db, 'devices', 'lid_' + did)).catch(() => null);
+      if (didCheck && didCheck.exists()) {
+        hideLoader();
+        showBlocked();
+        return;
+      }
+    }
+  } catch (e) {
+    // Device check failed — continue (don't block real users due to network issues)
+    console.warn('EarnPro: pre-submit device check failed:', e);
   }
 
-  showLoader('Creating account...');
-
-  try {
-    // Referral validation (before auth — allowed by rules)
-    let referrerId = null;
-    if (rf) {
+  // ── Referral validation (before creating auth account) ───────
+  let referrerId = null;
+  if (rf) {
+    showLoader('Validating referral code...');
+    try {
+      // users collection is publicly readable per the fixed rules
       const q = query(collection(db, 'users'), where('referralCode', '==', rf));
       const snap = await getDocs(q);
-      if (snap.empty) { hideLoader(); toast('Invalid referral code', 'err'); return; }
+      if (snap.empty) {
+        hideLoader();
+        toast('Invalid referral code. Leave blank to skip.', 'err');
+        return;
+      }
       referrerId = snap.docs[0].id;
+    } catch (e) {
+      hideLoader();
+      console.error('EarnPro: referral check error:', e);
+      toast('Could not validate referral code. Try again.', 'err');
+      return;
     }
+  }
 
-    // Create Firebase Auth user
+  // ── Create Firebase Auth account ─────────────────────────────
+  showLoader('Creating account...');
+  let uid = null;
+
+  try {
     const cred = await createUserWithEmailAndPassword(auth, em, pw);
-    const uid = cred.user.uid;
-    const code = refCode(uid);
-    const fp = deviceFp || await getDeviceFingerprint();
+    uid = cred.user.uid;
+  } catch (e) {
+    hideLoader();
+    const msgs = {
+      'auth/email-already-in-use': 'This email is already registered. Please login.',
+      'auth/invalid-email':        'Invalid email address.',
+      'auth/weak-password':        'Password is too weak — use 6 or more characters.',
+      'auth/operation-not-allowed':'Email sign-up is not enabled. Contact support.',
+      'auth/network-request-failed':'Network error. Check your connection and try again.'
+    };
+    toast(msgs[e.code] || 'Registration failed (' + (e.code || 'unknown') + '). Try again.', 'err');
+    return;
+  }
 
-    // Save user document
+  // ── Save user document to Firestore ──────────────────────────
+  showLoader('Setting up your account...');
+  try {
+    const code = refCode(uid);
+    const fp   = deviceFp || await getDeviceFingerprint().catch(() => '');
+    const did  = deviceId || getDeviceId();
+
     await setDoc(doc(db, 'users', uid), {
-      uid, username: un, email: em,
-      balance: 0, totalEarned: 0,
-      adsWatched: 0, referralCount: 0,
-      referralCode: code,
-      referredBy: referrerId || null,
-      membership: 'free', role: 'user',
-      isActive: true, isBanned: false,
-      claimedTasks: [],
+      uid,
+      username:         un,
+      email:            em,
+      balance:          0,
+      totalEarned:      0,
+      adsWatched:       0,
+      referralCount:    0,
+      referralCode:     code,
+      referredBy:       referrerId || null,
+      membership:       'free',
+      role:             'user',
+      isActive:         true,
+      isBanned:         false,
+      claimedTasks:     [],
       dailyBonusClaimed: null,
-      deviceFingerprint: fp,
-      createdAt: serverTimestamp(),
-      lastSeen: serverTimestamp()
+      deviceFingerprint: fp || '',
+      createdAt:        serverTimestamp(),
+      lastSeen:         serverTimestamp()
     });
 
-    // Lock device
+    // ── Lock this device (fingerprint) ──────────────────────────
     if (fp) {
       await setDoc(doc(db, 'devices', fp), {
         fingerprint: fp,
-        uid, username: un,
-        registeredAt: serverTimestamp(),
-        ua: navigator.userAgent.slice(0, 150)
-      });
+        uid,
+        username:      un,
+        registeredAt:  serverTimestamp(),
+        ua:            navigator.userAgent.slice(0, 200)
+      }).catch(e => console.warn('EarnPro: fingerprint lock failed (non-fatal):', e));
     }
 
-    // Referral bonus — now auth is established so settings read works
+    // ── Lock this device (localStorage ID) ──────────────────────
+    if (did) {
+      await setDoc(doc(db, 'devices', 'lid_' + did), {
+        localId: did,
+        uid,
+        username:     un,
+        registeredAt: serverTimestamp()
+      }).catch(e => console.warn('EarnPro: localId lock failed (non-fatal):', e));
+    }
+
+    // ── Award referral bonus ─────────────────────────────────────
     if (referrerId) {
       try {
-        const setSnap = await getDocs(collection(db, 'settings'));
+        // settings is publicly readable per the fixed rules
+        const setSnap = await getDocs(collection(db, 'settings')).catch(() => ({ empty: true }));
         const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
+
         await updateDoc(doc(db, 'users', referrerId), {
-          balance: increment(bonus),
-          totalEarned: increment(bonus),
+          balance:       increment(bonus),
+          totalEarned:   increment(bonus),
           referralCount: increment(1)
         });
+
         await setDoc(doc(db, 'referrals', uid), {
-          referrerId, newUserId: uid, bonus,
-          newUsername: un, createdAt: serverTimestamp()
+          referrerId,
+          newUserId:   uid,
+          bonus,
+          newUsername: un,
+          createdAt:   serverTimestamp()
         });
-      } catch(refErr) {
-        // Referral bonus failure should not block registration
-        console.warn('Referral bonus error:', refErr);
+      } catch (e) {
+        // Referral bonus failure is non-fatal; user account is already created
+        console.warn('EarnPro: referral bonus failed (non-fatal):', e);
       }
     }
 
-    toast('Account created! Welcome 🎉', 'ok');
-    setTimeout(() => location.href = 'home.html', 500);
-
-  } catch(e) {
     hideLoader();
-    const msgs = {
-      'auth/email-already-in-use': 'Email already registered. Please login.',
-      'auth/invalid-email': 'Invalid email address',
-      'auth/weak-password': 'Password too weak — use 6+ characters',
-      'auth/network-request-failed': 'Network error. Check your connection.',
-      'auth/too-many-requests': 'Too many attempts. Try again later.'
-    };
-    toast(msgs[e.code] || 'Registration failed. Try again.', 'err');
+    toast('Account created! Welcome to EarnPro 🎉', 'ok');
+    setTimeout(() => location.href = 'home.html', 600);
+
+  } catch (e) {
+    hideLoader();
+    console.error('EarnPro: post-auth setup failed:', e);
+    // Auth account was created; try to redirect so they can still login
+    if (e.code === 'permission-denied') {
+      toast('Account created but setup incomplete. Logging you in...', 'warn');
+      setTimeout(() => location.href = 'home.html', 1200);
+    } else {
+      toast('Account setup failed. Please try logging in.', 'err');
+      setTimeout(() => location.href = 'login.html', 1500);
+    }
   }
 });
 </script>
