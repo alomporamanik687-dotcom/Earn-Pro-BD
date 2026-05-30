@@ -3,12 +3,13 @@ import { getAuth, setPersistence, browserLocalPersistence } from 'https://www.gs
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCbcniCvz17GdiGldDw_038fQ5qIzWnM8Y",
-  authDomain: "earnpro-ac803.firebaseapp.com",
-  projectId: "earnpro-ac803",
-  storageBucket: "earnpro-ac803.firebasestorage.app",
-  messagingSenderId: "217418853905",
-  appId: "1:217418853905:web:70dc1445b14232743c0bb0"
+  apiKey: "AIzaSyBTXIDZY-XhO9X5l0q1qqFK1FiEVI-uXXA",
+  authDomain: "takabd44.firebaseapp.com",
+  projectId: "takabd44",
+  storageBucket: "takabd44.firebasestorage.app",
+  messagingSenderId: "653424131458",
+  appId: "1:653424131458:web:42ed0d47902e88eac9e39b",
+  measurementId: "G-3LMX66GK5C"
 };
 
 const app = initializeApp(firebaseConfig);
