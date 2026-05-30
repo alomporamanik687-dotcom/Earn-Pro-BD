@@ -13,10 +13,29 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 .blocked-title{font-size:21px;font-weight:900;color:var(--red);margin-bottom:10px}
 .blocked-msg{font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:14px}
 .blocked-rule{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:var(--r2);padding:10px 14px;font-size:12px;color:var(--red);font-weight:600;margin-bottom:18px}
+/* Debug log box */
+#debugBox{
+  display:none;
+  margin-top:14px;
+  background:#0a0a1a;
+  border:1px solid rgba(124,58,237,.3);
+  border-radius:10px;
+  padding:10px 12px;
+  font-family:monospace;
+  font-size:11px;
+  color:#a0a0c0;
+  max-height:200px;
+  overflow-y:auto;
+  text-align:left;
+}
+#debugBox .ok  { color:#10b981; }
+#debugBox .err { color:#ef4444; }
+#debugBox .inf { color:#a855f7; }
 </style>
 </head>
 <body>
 
+<!-- BLOCKED (device already registered) -->
 <div class="blocked-wrap" id="blockedScreen">
   <div style="font-size:72px;margin-bottom:16px">🚫</div>
   <div class="blocked-box">
@@ -28,12 +47,14 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
   </div>
 </div>
 
+<!-- LOADING (device check) -->
 <div class="blocked-wrap" id="loadingScreen" style="display:flex">
   <div class="splash-logo">💎</div>
   <div style="margin-top:18px"><div class="splash-spin"></div></div>
   <div style="margin-top:12px;font-size:13px;color:var(--t3)" id="loadingMsg">Checking device...</div>
 </div>
 
+<!-- REGISTER FORM -->
 <div class="auth-pg" id="registerForm" style="width:100%;display:none">
   <div class="auth-logo">
     <div class="al">💎</div>
@@ -43,6 +64,7 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
   <div class="auth-card">
     <h2>Create Account ✨</h2>
     <p class="sub">Join thousands of active earners</p>
+
     <div class="igroup ifield-ico">
       <label>Username</label>
       <span class="ico">👤</span>
@@ -62,13 +84,25 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
       <span class="ico">🔗</span>
       <input type="text" id="ref" class="ifield" placeholder="EPXXXXXX" style="text-transform:uppercase">
     </div>
+
     <button class="btn btn-p btn-full btn-lg" id="regBtn">✨ Create Account</button>
+
+    <!-- Debug log (shows if registration fails) -->
+    <div id="debugBox"></div>
+
     <div class="divider"></div>
     <p class="auth-foot" style="margin:0">Already have account? <a href="login.html">Login</a></p>
   </div>
 </div>
 
 <script type="module">
+/* ════════════════════════════════════════════════════════════
+   EarnPro Registration — 100% Firebase Authentication
+   ════════════════════════════════════════════════════════════
+   ONLY METHOD USED: createUserWithEmailAndPassword(auth, email, password)
+   NO localStorage auth. NO custom UID. NO fake session.
+   ════════════════════════════════════════════════════════════ */
+
 import { auth, db } from './assets/firebase/firebase.js';
 import {
   createUserWithEmailAndPassword,
@@ -85,31 +119,47 @@ import { getDeviceId } from './assets/js/device.js';
 
 const $ = id => document.getElementById(id);
 
-/* Already logged in → home */
+/* ── On-screen debug logger ─────────────────────────────── */
+function dbg(msg, type = 'inf') {
+  console.log('[EarnPro]', msg);
+  const box = $('debugBox');
+  if (!box) return;
+  box.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = type;
+  line.textContent = '› ' + msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ── Already logged in → home (single-fire) ─────────────── */
 const authUnsub = onAuthStateChanged(auth, user => {
   authUnsub();
-  if (user) location.replace('home.html');
+  if (user) {
+    dbg('Already logged in: ' + user.uid, 'ok');
+    location.replace('home.html');
+  }
 });
 
-/* URL referral */
+/* ── URL referral ────────────────────────────────────────── */
 const urlRef = new URLSearchParams(location.search).get('ref');
 if (urlRef) $('ref').value = urlRef.toUpperCase();
-$('ref').addEventListener('input', function(){ this.value = this.value.toUpperCase(); });
+$('ref').addEventListener('input', function () { this.value = this.value.toUpperCase(); });
 
-/* UI */
-function showForm(){
+/* ── UI helpers ──────────────────────────────────────────── */
+function showForm() {
   $('loadingScreen').style.display = 'none';
-  $('registerForm').style.display = 'flex';
+  $('registerForm').style.display  = 'flex';
   $('registerForm').classList.add('fade-in');
 }
-function showBlocked(){
+function showBlocked() {
   $('loadingScreen').style.display = 'none';
   $('blockedScreen').style.display = 'flex';
 }
 
-/* Device check */
+/* ── Device check on page load ───────────────────────────── */
 let _fp = null, _did = null;
-const _t = setTimeout(showForm, 6000);
+const _chkTimeout = setTimeout(showForm, 6000); /* safety timeout */
 
 (async () => {
   try {
@@ -119,92 +169,135 @@ const _t = setTimeout(showForm, 6000);
       Promise.resolve(getDeviceId())
     ]);
     let blocked = false;
-    if (_fp){
-      try{ const s = await getDoc(doc(db,'devices',_fp)); if(s.exists()) blocked=true; }
-      catch(e){ if(e.code !== 'permission-denied') throw e; }
+    if (_fp) {
+      try { const s = await getDoc(doc(db, 'devices', _fp)); if (s.exists()) blocked = true; }
+      catch (e) { if (e.code !== 'permission-denied') throw e; }
     }
-    if(!blocked && _did){
-      try{ const s = await getDoc(doc(db,'devices','lid_'+_did)); if(s.exists()) blocked=true; }
-      catch{}
+    if (!blocked && _did) {
+      try { const s = await getDoc(doc(db, 'devices', 'lid_' + _did)); if (s.exists()) blocked = true; }
+      catch { /* non-fatal */ }
     }
-    clearTimeout(_t);
+    clearTimeout(_chkTimeout);
     blocked ? showBlocked() : showForm();
-  } catch { clearTimeout(_t); showForm(); }
+  } catch (e) {
+    clearTimeout(_chkTimeout);
+    showForm();
+  }
 })();
 
-/* Register */
+/* ════════════════════════════════════════════════════════════
+   REGISTRATION HANDLER
+   ════════════════════════════════════════════════════════════ */
 let _busy = false;
+
 $('regBtn').addEventListener('click', async () => {
-  if(_busy) return;
+  if (_busy) return;
 
   const un = $('un').value.trim();
   const em = $('em').value.trim().toLowerCase();
   const pw = $('pw').value;
   const rf = $('ref').value.trim().toUpperCase();
 
-  if(!un)                          { toast('Enter a username','err'); return; }
-  if(un.length < 3)                { toast('Username min 3 characters','err'); return; }
-  if(un.length > 20)               { toast('Username max 20 characters','err'); return; }
-  if(!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, _ only','err'); return; }
-  if(!em)                          { toast('Enter email address','err'); return; }
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){ toast('Enter valid email','err'); return; }
-  if(!pw || pw.length < 6)         { toast('Password min 6 characters','err'); return; }
+  /* ── Validation ──────────────────────────────────────── */
+  if (!un)                           { toast('Enter a username', 'err'); return; }
+  if (un.length < 3)                 { toast('Username min 3 characters', 'err'); return; }
+  if (un.length > 20)                { toast('Username max 20 characters', 'err'); return; }
+  if (!/^[a-zA-Z0-9_]+$/.test(un))  { toast('Username: letters, numbers, _ only', 'err'); return; }
+  if (!em)                           { toast('Enter email address', 'err'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Enter valid email', 'err'); return; }
+  if (!pw || pw.length < 6)          { toast('Password min 6 characters', 'err'); return; }
 
   _busy = true;
+  dbg('Signup Started — email: ' + em, 'inf');
   showLoader('Verifying device...');
 
-  /* Re-check device */
+  /* ── Re-check device ─────────────────────────────────── */
   try {
-    const fp  = _fp  || await getDeviceFingerprint().catch(()=>'');
+    const fp  = _fp  || await getDeviceFingerprint().catch(() => '');
     const did = _did || getDeviceId();
-    if(fp){  const s = await getDoc(doc(db,'devices',fp)).catch(()=>null);       if(s?.exists()){ hideLoader(); _busy=false; showBlocked(); return; }}
-    if(did){ const s = await getDoc(doc(db,'devices','lid_'+did)).catch(()=>null); if(s?.exists()){ hideLoader(); _busy=false; showBlocked(); return; }}
-  } catch {}
+    if (fp) {
+      const s = await getDoc(doc(db, 'devices', fp)).catch(() => null);
+      if (s?.exists()) { hideLoader(); _busy = false; showBlocked(); return; }
+    }
+    if (did) {
+      const s = await getDoc(doc(db, 'devices', 'lid_' + did)).catch(() => null);
+      if (s?.exists()) { hideLoader(); _busy = false; showBlocked(); return; }
+    }
+  } catch { /* non-fatal */ }
 
-  /* Validate referral */
+  /* ── Validate referral code ──────────────────────────── */
   let referrerId = null;
-  if(rf){
+  if (rf) {
     showLoader('Checking referral code...');
     try {
-      const q = query(collection(db,'users'), where('referralCode','==',rf));
+      const q    = query(collection(db, 'users'), where('referralCode', '==', rf));
       const snap = await getDocs(q);
-      if(snap.empty){ hideLoader(); toast('Invalid referral code','err'); _busy=false; return; }
+      if (snap.empty) {
+        hideLoader(); toast('Invalid referral code. Leave blank to skip.', 'err'); _busy = false; return;
+      }
       referrerId = snap.docs[0].id;
-    } catch { hideLoader(); toast('Could not verify referral code','err'); _busy=false; return; }
+      dbg('Referral valid. Referrer: ' + referrerId, 'ok');
+    } catch (e) {
+      hideLoader(); toast('Could not verify referral code. Try again.', 'err'); _busy = false; return;
+    }
   }
 
-  /* ── createUserWithEmailAndPassword ─────────────────────────
-     This is the ONLY method used. After this call, the user
-     automatically appears in Firebase Authentication → Users.
-  ──────────────────────────────────────────────────────────── */
-  showLoader('Creating account...');
-  let uid;
+  /* ════════════════════════════════════════════════════════
+     STEP 1: CREATE FIREBASE AUTHENTICATION USER
+     createUserWithEmailAndPassword is the ONLY auth method.
+     After success, user appears in Firebase Authentication → Users.
+     ════════════════════════════════════════════════════════ */
+  showLoader('Creating Firebase account...');
+  let firebaseUID;
+
   try {
-    const cred = await createUserWithEmailAndPassword(auth, em, pw);
-    uid = cred.user.uid;
-    /* uid is now available in Firebase Authentication */
-  } catch(e){
+    dbg('Calling createUserWithEmailAndPassword...', 'inf');
+
+    const userCredential = await createUserWithEmailAndPassword(auth, em, pw);
+
+    /* Firebase Authentication UID — real, permanent, unique */
+    firebaseUID = userCredential.user.uid;
+
+    dbg('Authentication Success!', 'ok');
+    dbg('Authentication UID: ' + firebaseUID, 'ok');
+    /* ✅ User now visible in Firebase Authentication → Users */
+
+  } catch (authError) {
     hideLoader(); _busy = false;
+
+    dbg('Authentication Error: ' + authError.code, 'err');
+    console.error('[EarnPro] Auth error:', authError);
+
     const msgs = {
-      'auth/email-already-in-use': 'Email already registered. Please login.',
-      'auth/invalid-email':        'Invalid email address.',
-      'auth/weak-password':        'Password too weak — use 6+ characters.',
-      'auth/operation-not-allowed':'Email sign-up is disabled. Contact support.',
-      'auth/network-request-failed':'Network error. Check your connection.'
+      'auth/email-already-in-use':  'Email already registered. Please login.',
+      'auth/invalid-email':         'Invalid email address.',
+      'auth/weak-password':         'Password too weak — use 6+ characters.',
+      'auth/operation-not-allowed': 'Email sign-up is disabled in Firebase. Enable Email/Password in Authentication → Sign-in method.',
+      'auth/network-request-failed':'Network error. Check your connection.',
+      'auth/too-many-requests':     'Too many attempts. Please wait a moment.',
+      'auth/configuration-not-found':'Firebase configuration error. Check firebase.js settings.'
     };
-    toast(msgs[e.code] || 'Registration failed: ' + e.code, 'err');
+
+    toast(msgs[authError.code] || 'Registration failed: ' + authError.code, 'err', 6000);
+    dbg('Fix: ' + (msgs[authError.code] || authError.message), 'err');
     return;
   }
 
-  /* Save user document to Firestore */
-  showLoader('Setting up account...');
+  /* ════════════════════════════════════════════════════════
+     STEP 2: SAVE USER PROFILE TO FIRESTORE
+     Document ID = firebaseUID (same as Authentication UID)
+     ════════════════════════════════════════════════════════ */
+  showLoader('Saving profile...');
+
   try {
-    const referralCode = 'EP' + uid.slice(0,6).toUpperCase();
-    const fp  = _fp  || await getDeviceFingerprint().catch(()=>'');
+    dbg('Saving Firestore document — users/' + firebaseUID, 'inf');
+
+    const referralCode = 'EP' + firebaseUID.slice(0, 6).toUpperCase();
+    const fp  = _fp  || await getDeviceFingerprint().catch(() => '');
     const did = _did || getDeviceId();
 
-    await setDoc(doc(db,'users',uid), {
-      uid,
+    await setDoc(doc(db, 'users', firebaseUID), {
+      uid:               firebaseUID,    /* Firebase Authentication UID */
       username:          un,
       email:             em,
       balance:           0,
@@ -226,39 +319,49 @@ $('regBtn').addEventListener('click', async () => {
       lastSeen:          serverTimestamp()
     });
 
-    /* Lock devices (non-blocking) */
-    if(fp)  setDoc(doc(db,'devices',fp),        { fingerprint:fp, uid, username:un, registeredAt:serverTimestamp(), ua:navigator.userAgent.slice(0,200) }).catch(()=>{});
-    if(did) setDoc(doc(db,'devices','lid_'+did), { localId:did, uid, username:un, registeredAt:serverTimestamp() }).catch(()=>{});
+    dbg('Firestore Save Success — users/' + firebaseUID, 'ok');
+
+    /* Lock device (non-blocking, failure is OK) */
+    if (fp)  setDoc(doc(db, 'devices', fp),          { fingerprint: fp, uid: firebaseUID, username: un, registeredAt: serverTimestamp(), ua: navigator.userAgent.slice(0, 200) }).catch(() => {});
+    if (did) setDoc(doc(db, 'devices', 'lid_' + did), { localId: did, uid: firebaseUID, username: un, registeredAt: serverTimestamp() }).catch(() => {});
 
     /* Referral bonus (non-blocking) */
-    if(referrerId){
-      (async()=>{
+    if (referrerId) {
+      (async () => {
         try {
-          const setSnap = await getDocs(collection(db,'settings')).catch(()=>({empty:true}));
-          const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
-          await updateDoc(doc(db,'users',referrerId),{
-            balance:increment(bonus), totalEarned:increment(bonus),
-            referrals:increment(1), referralCount:increment(1)
+          const setSnap = await getDocs(collection(db, 'settings')).catch(() => ({ empty: true }));
+          const bonus   = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
+          await updateDoc(doc(db, 'users', referrerId), {
+            balance: increment(bonus), totalEarned: increment(bonus),
+            referrals: increment(1), referralCount: increment(1)
           });
-          await setDoc(doc(db,'referrals',uid),{
-            referrerId, newUserId:uid, bonus, newUsername:un, createdAt:serverTimestamp()
+          await setDoc(doc(db, 'referrals', firebaseUID), {
+            referrerId, newUserId: firebaseUID, bonus, newUsername: un, createdAt: serverTimestamp()
           });
-        } catch {}
+          dbg('Referral bonus sent to ' + referrerId, 'ok');
+        } catch (e) {
+          dbg('Referral bonus failed (non-fatal): ' + e.code, 'err');
+        }
       })();
     }
 
     hideLoader();
-    toast('Account created! Welcome to EarnPro 🎉','ok');
-    setTimeout(() => location.replace('home.html'), 500);
+    toast('Account created! Welcome to EarnPro 🎉', 'ok');
+    dbg('Registration complete. Redirecting...', 'ok');
+    setTimeout(() => location.replace('home.html'), 600);
 
-  } catch(e){
+  } catch (fsError) {
     hideLoader(); _busy = false;
-    if(e.code === 'permission-denied'){
-      toast('Account ready! Logging you in...','warn');
-      setTimeout(() => location.replace('home.html'), 1000);
+
+    dbg('Firestore Error: ' + fsError.code, 'err');
+    console.error('[EarnPro] Firestore error:', fsError);
+
+    if (fsError.code === 'permission-denied') {
+      dbg('Fix: Deploy Firestore Rules — rules not published yet', 'err');
+      toast('Account created in Firebase! Deploy Firestore Rules to complete setup.', 'warn', 6000);
+      setTimeout(() => location.replace('home.html'), 1500);
     } else {
-      toast('Setup error: ' + e.code,'err');
-      setTimeout(() => location.replace('login.html'), 1500);
+      toast('Profile save failed: ' + fsError.code, 'err', 5000);
     }
   }
 });
