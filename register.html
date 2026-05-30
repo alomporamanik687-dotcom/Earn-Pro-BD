@@ -17,7 +17,6 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 </head>
 <body>
 
-<!-- BLOCKED (device already registered) -->
 <div class="blocked-wrap" id="blockedScreen">
   <div style="font-size:72px;margin-bottom:16px">🚫</div>
   <div class="blocked-box">
@@ -29,14 +28,12 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
   </div>
 </div>
 
-<!-- LOADING (device check) -->
 <div class="blocked-wrap" id="loadingScreen" style="display:flex">
   <div class="splash-logo">💎</div>
   <div style="margin-top:18px"><div class="splash-spin"></div></div>
   <div style="margin-top:12px;font-size:13px;color:var(--t3)" id="loadingMsg">Checking device...</div>
 </div>
 
-<!-- REGISTER FORM -->
 <div class="auth-pg" id="registerForm" style="width:100%;display:none">
   <div class="auth-logo">
     <div class="al">💎</div>
@@ -54,7 +51,7 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
     <div class="igroup ifield-ico">
       <label>Email Address</label>
       <span class="ico">✉️</span>
-      <input type="email" id="em" class="ifield" placeholder="you@email.com" autocomplete="email">
+      <input type="email" id="em" class="ifield" placeholder="you@gmail.com" autocomplete="email">
     </div>
     <div class="igroup">
       <label>Password</label>
@@ -73,15 +70,22 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 
 <script type="module">
 import { auth, db } from './assets/firebase/firebase.js';
-import { createUserWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { toast, showLoader, hideLoader, refCode } from './assets/js/app.js';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import {
+  doc, setDoc, getDoc,
+  collection, query, where, getDocs,
+  updateDoc, increment, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { toast, showLoader, hideLoader } from './assets/js/app.js';
 import { getDeviceFingerprint } from './assets/js/fingerprint.js';
 import { getDeviceId } from './assets/js/device.js';
 
 const $ = id => document.getElementById(id);
 
-/* Single-fire: if already logged in → home */
+/* Already logged in → home */
 const authUnsub = onAuthStateChanged(auth, user => {
   authUnsub();
   if (user) location.replace('home.html');
@@ -90,23 +94,22 @@ const authUnsub = onAuthStateChanged(auth, user => {
 /* URL referral */
 const urlRef = new URLSearchParams(location.search).get('ref');
 if (urlRef) $('ref').value = urlRef.toUpperCase();
-$('ref').addEventListener('input', function () { this.value = this.value.toUpperCase(); });
+$('ref').addEventListener('input', function(){ this.value = this.value.toUpperCase(); });
 
-/* UI helpers */
-function showForm() {
+/* UI */
+function showForm(){
   $('loadingScreen').style.display = 'none';
   $('registerForm').style.display = 'flex';
   $('registerForm').classList.add('fade-in');
 }
-function showBlocked() {
+function showBlocked(){
   $('loadingScreen').style.display = 'none';
   $('blockedScreen').style.display = 'flex';
 }
 
-/* Device check on load */
+/* Device check */
 let _fp = null, _did = null;
-
-const _timeout = setTimeout(showForm, 6000); /* safety: never stuck loading */
+const _t = setTimeout(showForm, 6000);
 
 (async () => {
   try {
@@ -116,67 +119,71 @@ const _timeout = setTimeout(showForm, 6000); /* safety: never stuck loading */
       Promise.resolve(getDeviceId())
     ]);
     let blocked = false;
-    if (_fp) {
-      try { const s = await getDoc(doc(db,'devices',_fp)); if (s.exists()) blocked = true; }
-      catch (e) { if (e.code !== 'permission-denied') throw e; }
+    if (_fp){
+      try{ const s = await getDoc(doc(db,'devices',_fp)); if(s.exists()) blocked=true; }
+      catch(e){ if(e.code !== 'permission-denied') throw e; }
     }
-    if (!blocked && _did) {
-      try { const s = await getDoc(doc(db,'devices','lid_'+_did)); if (s.exists()) blocked = true; }
-      catch { /* non-fatal */ }
+    if(!blocked && _did){
+      try{ const s = await getDoc(doc(db,'devices','lid_'+_did)); if(s.exists()) blocked=true; }
+      catch{}
     }
-    clearTimeout(_timeout);
+    clearTimeout(_t);
     blocked ? showBlocked() : showForm();
-  } catch { clearTimeout(_timeout); showForm(); }
+  } catch { clearTimeout(_t); showForm(); }
 })();
 
-/* Registration */
+/* Register */
 let _busy = false;
-
 $('regBtn').addEventListener('click', async () => {
-  if (_busy) return;
-  const un  = $('un').value.trim();
-  const em  = $('em').value.trim().toLowerCase();
-  const pw  = $('pw').value;
-  const rf  = $('ref').value.trim().toUpperCase();
+  if(_busy) return;
 
-  if (!un)                           { toast('Enter a username', 'err'); return; }
-  if (un.length < 3)                 { toast('Username min 3 characters', 'err'); return; }
-  if (un.length > 20)                { toast('Username max 20 characters', 'err'); return; }
-  if (!/^[a-zA-Z0-9_]+$/.test(un))  { toast('Username: letters, numbers, _ only', 'err'); return; }
-  if (!em)                           { toast('Enter email address', 'err'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { toast('Enter valid email', 'err'); return; }
-  if (!pw || pw.length < 6)          { toast('Password min 6 characters', 'err'); return; }
+  const un = $('un').value.trim();
+  const em = $('em').value.trim().toLowerCase();
+  const pw = $('pw').value;
+  const rf = $('ref').value.trim().toUpperCase();
+
+  if(!un)                          { toast('Enter a username','err'); return; }
+  if(un.length < 3)                { toast('Username min 3 characters','err'); return; }
+  if(un.length > 20)               { toast('Username max 20 characters','err'); return; }
+  if(!/^[a-zA-Z0-9_]+$/.test(un)) { toast('Username: letters, numbers, _ only','err'); return; }
+  if(!em)                          { toast('Enter email address','err'); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){ toast('Enter valid email','err'); return; }
+  if(!pw || pw.length < 6)         { toast('Password min 6 characters','err'); return; }
 
   _busy = true;
   showLoader('Verifying device...');
 
-  /* Re-check device before creating account */
+  /* Re-check device */
   try {
-    const fp  = _fp  || await getDeviceFingerprint().catch(() => '');
+    const fp  = _fp  || await getDeviceFingerprint().catch(()=>'');
     const did = _did || getDeviceId();
-    if (fp)  { const s = await getDoc(doc(db,'devices',fp)).catch(()=>null);      if (s?.exists()) { hideLoader(); _busy=false; showBlocked(); return; } }
-    if (did) { const s = await getDoc(doc(db,'devices','lid_'+did)).catch(()=>null); if (s?.exists()) { hideLoader(); _busy=false; showBlocked(); return; } }
-  } catch { /* non-fatal */ }
+    if(fp){  const s = await getDoc(doc(db,'devices',fp)).catch(()=>null);       if(s?.exists()){ hideLoader(); _busy=false; showBlocked(); return; }}
+    if(did){ const s = await getDoc(doc(db,'devices','lid_'+did)).catch(()=>null); if(s?.exists()){ hideLoader(); _busy=false; showBlocked(); return; }}
+  } catch {}
 
   /* Validate referral */
   let referrerId = null;
-  if (rf) {
+  if(rf){
     showLoader('Checking referral code...');
     try {
       const q = query(collection(db,'users'), where('referralCode','==',rf));
       const snap = await getDocs(q);
-      if (snap.empty) { hideLoader(); toast('Invalid referral code. Leave blank to skip.','err'); _busy=false; return; }
+      if(snap.empty){ hideLoader(); toast('Invalid referral code','err'); _busy=false; return; }
       referrerId = snap.docs[0].id;
-    } catch { hideLoader(); toast('Could not verify referral code. Try again.','err'); _busy=false; return; }
+    } catch { hideLoader(); toast('Could not verify referral code','err'); _busy=false; return; }
   }
 
-  /* Create auth account */
+  /* ── createUserWithEmailAndPassword ─────────────────────────
+     This is the ONLY method used. After this call, the user
+     automatically appears in Firebase Authentication → Users.
+  ──────────────────────────────────────────────────────────── */
   showLoader('Creating account...');
   let uid;
   try {
     const cred = await createUserWithEmailAndPassword(auth, em, pw);
     uid = cred.user.uid;
-  } catch (e) {
+    /* uid is now available in Firebase Authentication */
+  } catch(e){
     hideLoader(); _busy = false;
     const msgs = {
       'auth/email-already-in-use': 'Email already registered. Please login.',
@@ -185,55 +192,72 @@ $('regBtn').addEventListener('click', async () => {
       'auth/operation-not-allowed':'Email sign-up is disabled. Contact support.',
       'auth/network-request-failed':'Network error. Check your connection.'
     };
-    toast(msgs[e.code] || 'Registration failed. Try again.', 'err');
+    toast(msgs[e.code] || 'Registration failed: ' + e.code, 'err');
     return;
   }
 
-  /* Save Firestore user document */
+  /* Save user document to Firestore */
   showLoader('Setting up account...');
   try {
-    const code = refCode(uid);
-    const fp   = _fp  || await getDeviceFingerprint().catch(() => '');
-    const did  = _did || getDeviceId();
+    const referralCode = 'EP' + uid.slice(0,6).toUpperCase();
+    const fp  = _fp  || await getDeviceFingerprint().catch(()=>'');
+    const did = _did || getDeviceId();
 
     await setDoc(doc(db,'users',uid), {
-      uid, username: un, email: em,
-      balance: 0, totalEarned: 0, adsWatched: 0, referralCount: 0,
-      referralCode: code, referredBy: referrerId || null,
-      membership: 'free', role: 'user',
-      isActive: true, isBanned: false,
-      claimedTasks: [], dailyBonusClaimed: null,
+      uid,
+      username:          un,
+      email:             em,
+      balance:           0,
+      earned:            0,
+      totalEarned:       0,
+      adsWatched:        0,
+      referrals:         0,
+      referralCount:     0,
+      referralCode,
+      referredBy:        referrerId || null,
+      membership:        'free',
+      role:              'user',
+      isActive:          true,
+      isBanned:          false,
+      claimedTasks:      [],
+      dailyBonusClaimed: null,
       deviceFingerprint: fp || '',
-      createdAt: serverTimestamp(), lastSeen: serverTimestamp()
+      createdAt:         serverTimestamp(),
+      lastSeen:          serverTimestamp()
     });
 
     /* Lock devices (non-blocking) */
-    if (fp)  setDoc(doc(db,'devices',fp),      { fingerprint:fp, uid, username:un, registeredAt:serverTimestamp(), ua:navigator.userAgent.slice(0,200) }).catch(()=>{});
-    if (did) setDoc(doc(db,'devices','lid_'+did), { localId:did, uid, username:un, registeredAt:serverTimestamp() }).catch(()=>{});
+    if(fp)  setDoc(doc(db,'devices',fp),        { fingerprint:fp, uid, username:un, registeredAt:serverTimestamp(), ua:navigator.userAgent.slice(0,200) }).catch(()=>{});
+    if(did) setDoc(doc(db,'devices','lid_'+did), { localId:did, uid, username:un, registeredAt:serverTimestamp() }).catch(()=>{});
 
     /* Referral bonus (non-blocking) */
-    if (referrerId) {
-      (async () => {
+    if(referrerId){
+      (async()=>{
         try {
           const setSnap = await getDocs(collection(db,'settings')).catch(()=>({empty:true}));
           const bonus = setSnap.empty ? 5 : (setSnap.docs[0].data().referralBonus || 5);
-          await updateDoc(doc(db,'users',referrerId), { balance:increment(bonus), totalEarned:increment(bonus), referralCount:increment(1) });
-          await setDoc(doc(db,'referrals',uid), { referrerId, newUserId:uid, bonus, newUsername:un, createdAt:serverTimestamp() });
+          await updateDoc(doc(db,'users',referrerId),{
+            balance:increment(bonus), totalEarned:increment(bonus),
+            referrals:increment(1), referralCount:increment(1)
+          });
+          await setDoc(doc(db,'referrals',uid),{
+            referrerId, newUserId:uid, bonus, newUsername:un, createdAt:serverTimestamp()
+          });
         } catch {}
       })();
     }
 
     hideLoader();
-    toast('Account created! Welcome to EarnPro 🎉', 'ok');
+    toast('Account created! Welcome to EarnPro 🎉','ok');
     setTimeout(() => location.replace('home.html'), 500);
 
-  } catch (e) {
+  } catch(e){
     hideLoader(); _busy = false;
-    if (e.code === 'permission-denied') {
-      toast('Account ready! Logging you in...', 'warn');
+    if(e.code === 'permission-denied'){
+      toast('Account ready! Logging you in...','warn');
       setTimeout(() => location.replace('home.html'), 1000);
     } else {
-      toast('Setup failed. Try logging in.', 'err');
+      toast('Setup error: ' + e.code,'err');
       setTimeout(() => location.replace('login.html'), 1500);
     }
   }
