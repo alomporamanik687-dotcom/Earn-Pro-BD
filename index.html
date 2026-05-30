@@ -18,6 +18,7 @@
 <script type="module">
 import { auth } from './assets/firebase/firebase.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+/* Single-fire: check auth state once, then redirect */
 const unsub = onAuthStateChanged(auth, user => {
   unsub();
   location.replace(user ? 'home.html' : 'login.html');
