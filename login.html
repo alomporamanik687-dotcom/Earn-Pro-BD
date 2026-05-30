@@ -6,9 +6,7 @@
 <meta name="theme-color" content="#07071a">
 <title>EarnPro – Login</title>
 <link rel="stylesheet" href="assets/css/style.css">
-<style>
-body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
-</style>
+<style>body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-content:center}</style>
 </head>
 <body>
 <div class="auth-pg fade-in" style="width:100%">
@@ -23,13 +21,13 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
     <div class="igroup ifield-ico">
       <label>Email Address</label>
       <span class="ico">✉️</span>
-      <input type="email" id="em" class="ifield" placeholder="you@email.com" autocomplete="email">
+      <input type="email" id="em" class="ifield" placeholder="you@gmail.com" autocomplete="email">
     </div>
     <div class="igroup">
       <label>Password</label>
       <div style="position:relative">
         <input type="password" id="pw" class="ifield" placeholder="••••••••" style="padding-right:46px" autocomplete="current-password">
-        <button id="eyeBtn" type="button" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--t3);cursor:pointer;font-size:18px;padding:4px;line-height:1">👁</button>
+        <button id="eyeBtn" type="button" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--t3);cursor:pointer;font-size:18px;padding:4px">👁</button>
       </div>
     </div>
     <div style="text-align:right;margin:-8px 0 16px">
@@ -42,12 +40,19 @@ body{padding:0;min-height:100svh;display:flex;flex-direction:column;justify-cont
 </div>
 
 <script type="module">
+/* ════════════════════════════════════════════════════════════
+   EarnPro Login — signInWithEmailAndPassword ONLY
+   ════════════════════════════════════════════════════════════ */
 import { auth, db } from './assets/firebase/firebase.js';
-import { signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { toast, showLoader, hideLoader } from './assets/js/app.js';
 
-/* Single-fire check: if already logged in → home, else show form */
+/* Single-fire: already logged in → home */
 const unsub = onAuthStateChanged(auth, user => {
   unsub();
   if (user) location.replace('home.html');
@@ -62,13 +67,18 @@ document.getElementById('eyeBtn').addEventListener('click', function () {
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const em = document.getElementById('em').value.trim().toLowerCase();
   const pw = document.getElementById('pw').value;
-  if (!em || !pw) { toast('Please fill all fields', 'err'); return; }
+  if (!em || !pw) { toast('Fill all fields', 'err'); return; }
 
   showLoader('Signing in...');
   try {
+    /* signInWithEmailAndPassword — only Firebase Auth method */
     const cred = await signInWithEmailAndPassword(auth, em, pw);
+    const uid  = cred.user.uid; /* Firebase Authentication UID */
+    console.log('[EarnPro] Login Success. UID:', uid);
+
+    /* Check ban status */
     try {
-      const snap = await getDoc(doc(db, 'users', cred.user.uid));
+      const snap = await getDoc(doc(db, 'users', uid));
       if (snap.exists() && snap.data()?.isBanned) {
         const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         await signOut(auth);
@@ -76,21 +86,24 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         toast('Account banned. Contact support.', 'err');
         return;
       }
-    } catch { /* user doc read is non-fatal */ }
+    } catch { /* non-fatal */ }
+
     hideLoader();
     toast('Welcome back! 🎉', 'ok');
     setTimeout(() => location.replace('home.html'), 400);
+
   } catch (e) {
     hideLoader();
+    console.error('[EarnPro] Login error:', e);
     const m = {
       'auth/user-not-found':        'No account with this email.',
       'auth/wrong-password':        'Wrong password. Try again.',
       'auth/invalid-email':         'Invalid email address.',
-      'auth/too-many-requests':     'Too many attempts. Wait a few minutes.',
       'auth/invalid-credential':    'Invalid email or password.',
+      'auth/too-many-requests':     'Too many attempts. Wait a moment.',
       'auth/network-request-failed':'Network error. Check connection.'
     };
-    toast(m[e.code] || 'Login failed. Try again.', 'err');
+    toast(m[e.code] || 'Login failed: ' + e.code, 'err');
   }
 });
 
@@ -106,3 +119,4 @@ document.getElementById('forgotBtn').addEventListener('click', async e => {
 </script>
 </body>
 </html>
+
